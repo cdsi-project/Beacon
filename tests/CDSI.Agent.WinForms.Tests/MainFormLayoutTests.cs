@@ -56,13 +56,22 @@ public sealed class MainFormLayoutTests
             new("重复文件"),
             new("项目管理"),
             new("云备份管理"),
+            new("Git项目管理"),
             new("统计")
         ];
 
         MainForm.ConfigureMainTabs(tabControl, tabPages);
 
         Assert.Equal(
-            ["全部资产", "资产目录", "重复文件", "项目管理", "云备份管理", "统计"],
+            [
+                "全部资产",
+                "资产目录",
+                "重复文件",
+                "项目管理",
+                "云备份管理",
+                "Git项目管理",
+                "统计"
+            ],
             tabControl.TabPages.Cast<TabPage>().Select(page => page.Text));
         Assert.Equal(DockStyle.Fill, tabControl.Dock);
         Assert.Equal(new Point(12, 5), tabControl.Padding);

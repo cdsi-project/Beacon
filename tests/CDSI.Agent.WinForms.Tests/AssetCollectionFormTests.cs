@@ -1,6 +1,8 @@
 using CDSI.Agent.Application.Storage;
+using CDSI.Agent.Application.Git;
 using CDSI.Agent.Core.Collections;
 using CDSI.Agent.Core.Assets;
+using CDSI.Agent.Core.Git;
 using CDSI.Agent.Core.Storage;
 using CDSI.Agent.WinForms;
 
@@ -18,6 +20,34 @@ public sealed class AssetCollectionFormTests
             Enum.GetValues<AssetCollectionType>(),
             AssetCollectionDialog.CollectionTypeChoices.Select(choice => choice.Type));
         Assert.Equal(AssetCollectionType.Mixed, form.CollectionType);
+    }
+
+    [Fact]
+    public void EditDialog_PrefillsEditableDetailsWithoutChangingBackupBindings()
+    {
+        using var form = new AssetCollectionDialog(
+            "纪录片项目",
+            AssetCollectionType.Video);
+        form.CreateControl();
+
+        var nameTextBox = Assert.Single(
+            Descendants(form).OfType<TextBox>(),
+            textBox => textBox.AccessibleName == "项目名称");
+        var typeComboBox = Assert.Single(
+            Descendants(form).OfType<ComboBox>(),
+            comboBox => comboBox.AccessibleName == "项目类型");
+
+        Assert.Equal("编辑项目", form.Text);
+        Assert.Equal("纪录片项目", nameTextBox.Text);
+        Assert.Equal(AssetCollectionType.Video, form.CollectionType);
+        Assert.NotNull(typeComboBox.SelectedItem);
+        Assert.Contains(
+            Descendants(form).OfType<Button>(),
+            button => button.Text == "保存");
+        Assert.DoesNotContain(
+            Descendants(form),
+            control => control.AccessibleName == "开启云端备份" ||
+                control.AccessibleName == "云端备份配置列表");
     }
 
     [Fact]
@@ -150,19 +180,189 @@ public sealed class AssetCollectionFormTests
     {
         using var contextMenu = new ContextMenuStrip();
         using var syncItem = new ToolStripMenuItem();
+        using var syncToGitItem = new ToolStripMenuItem();
         using var deleteItem = new ToolStripMenuItem();
 
         MainForm.ConfigureProjectContextMenu(
             contextMenu,
             syncItem,
+            syncToGitItem,
             deleteItem);
 
-        Assert.Equal(3, contextMenu.Items.Count);
+        Assert.Equal(4, contextMenu.Items.Count);
         Assert.Same(syncItem, contextMenu.Items[0]);
         Assert.Equal("同步到云端", syncItem.Text);
-        Assert.IsType<ToolStripSeparator>(contextMenu.Items[1]);
-        Assert.Same(deleteItem, contextMenu.Items[2]);
+        Assert.Same(syncToGitItem, contextMenu.Items[1]);
+        Assert.Equal("同步到Git", syncToGitItem.Text);
+        Assert.IsType<ToolStripSeparator>(contextMenu.Items[2]);
+        Assert.Same(deleteItem, contextMenu.Items[3]);
         Assert.Equal("删除项目", deleteItem.Text);
+    }
+
+    [Fact]
+    public void ProjectGitMenu_ListsConfiguredRepositories()
+    {
+        var profiles = new[]
+        {
+            CreateGitProfile("仓库1", hasPassword: true),
+            CreateGitProfile("仓库2", hasPassword: true),
+            CreateGitProfile("凭据缺失", hasPassword: false)
+        };
+        using var menuItem = new ToolStripMenuItem();
+
+        MainForm.PopulateProjectGitMenu(menuItem, profiles, canSync: true);
+
+        Assert.Equal("同步到Git", menuItem.Text);
+        Assert.True(menuItem.Enabled);
+        Assert.Collection(
+            menuItem.DropDownItems.Cast<ToolStripMenuItem>(),
+            item =>
+            {
+                Assert.Equal("仓库1", item.Text);
+                Assert.Equal(profiles[0].Profile.Id, item.Tag);
+                Assert.True(item.Enabled);
+            },
+            item =>
+            {
+                Assert.Equal("仓库2", item.Text);
+                Assert.Equal(profiles[1].Profile.Id, item.Tag);
+                Assert.True(item.Enabled);
+            },
+            item =>
+            {
+                Assert.Equal("凭据缺失（凭据不可用）", item.Text);
+                Assert.Equal(profiles[2].Profile.Id, item.Tag);
+                Assert.False(item.Enabled);
+            });
+    }
+
+    [Fact]
+    public void ProjectGitMenu_ExplainsWhenNoRepositoryIsConfigured()
+    {
+        using var menuItem = new ToolStripMenuItem();
+
+        MainForm.PopulateProjectGitMenu(menuItem, [], canSync: true);
+
+        var placeholder = Assert.IsType<ToolStripMenuItem>(
+            Assert.Single(menuItem.DropDownItems.Cast<ToolStripItem>()));
+        Assert.Equal("尚未配置 Git 仓库", placeholder.Text);
+        Assert.False(placeholder.Enabled);
+    }
+
+    [Fact]
+    public void GitProjectManagementGrid_UsesResizableOperationalColumns()
+    {
+        using var grid = new DataGridView();
+
+        MainForm.ConfigureGitProjectGridColumns(grid);
+
+        Assert.Equal(
+            [
+                "项目",
+                "类型",
+                "Git仓库",
+                "平台",
+                "仓库地址",
+                "分支",
+                "最近提交",
+                "资产",
+                "大小",
+                "本地状态",
+                "同步时间"
+            ],
+            grid.Columns
+                .Cast<DataGridViewColumn>()
+                .Select(column => column.HeaderText));
+        Assert.All(
+            grid.Columns.Cast<DataGridViewColumn>(),
+            column => Assert.Equal(
+                DataGridViewTriState.True,
+                column.Resizable));
+    }
+
+    [Fact]
+    public void GitProjectContextMenu_OffersSyncAndNavigationCommands()
+    {
+        using var contextMenu = new ContextMenuStrip();
+        using var syncItem = new ToolStripMenuItem();
+        using var openProjectItem = new ToolStripMenuItem();
+        using var openRepositoryItem = new ToolStripMenuItem();
+        using var copyRepositoryUrlItem = new ToolStripMenuItem();
+
+        MainForm.ConfigureGitProjectContextMenu(
+            contextMenu,
+            syncItem,
+            openProjectItem,
+            openRepositoryItem,
+            copyRepositoryUrlItem);
+
+        Assert.Equal(5, contextMenu.Items.Count);
+        Assert.Equal("同步到Git", contextMenu.Items[0].Text);
+        Assert.IsType<ToolStripSeparator>(contextMenu.Items[1]);
+        Assert.Equal("打开所在项目", contextMenu.Items[2].Text);
+        Assert.Equal("打开仓库", contextMenu.Items[3].Text);
+        Assert.Equal("复制仓库地址", contextMenu.Items[4].Text);
+    }
+
+    [Fact]
+    public void GitProjectManagement_UsesCurrentLocalDetailsAndRetainsDeletedHistory()
+    {
+        var project = CreateProject("当前项目名");
+        var configured = CreateGitProfile("仓库1", hasPassword: true);
+        var record = CreateGitSyncRecord(
+            project.Id,
+            configured.Profile.Id,
+            "同步时项目名",
+            configured.Profile.DisplayName);
+
+        var available = Assert.Single(MainForm.CreateGitProjectManagementItems(
+            [record],
+            [project],
+            [configured]));
+        var deleted = Assert.Single(MainForm.CreateGitProjectManagementItems(
+            [record],
+            [],
+            []));
+
+        Assert.Equal("当前项目名", available.ProjectName);
+        Assert.Equal("可用", available.LocalState);
+        Assert.Equal("同步时项目名", deleted.ProjectName);
+        Assert.Equal("项目、配置已删除", deleted.LocalState);
+        Assert.Same(
+            available,
+            Assert.Single(MainForm.FilterGitProjectManagementItems(
+                [available],
+                "abcdef")));
+    }
+
+    [Theory]
+    [InlineData(
+        GitHostingProvider.GitHub,
+        "https://github.com/cdsi-project/Beacon.git",
+        "https://github.com/cdsi-project/Beacon")]
+    [InlineData(
+        GitHostingProvider.Gitee,
+        "git@gitee.com:cdsi/beacon.git",
+        "https://gitee.com/cdsi/beacon")]
+    public void GitProjectRepositoryUrl_ConvertsConfiguredAddressesForBrowserUse(
+        GitHostingProvider provider,
+        string repositoryUrl,
+        string expectedUrl)
+    {
+        var record = CreateGitSyncRecord(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            "项目",
+            "仓库") with
+        {
+            Provider = provider,
+            RepositoryUrl = repositoryUrl
+        };
+
+        var converted = MainForm.TryCreateGitRepositoryBrowserUrl(record, out var url);
+
+        Assert.True(converted);
+        Assert.Equal(expectedUrl, url);
     }
 
     [Fact]
@@ -437,6 +637,49 @@ public sealed class AssetCollectionFormTests
                 now,
                 now),
             HasStoredSecret: true);
+    }
+
+    private static ConfiguredGitProfile CreateGitProfile(
+        string name,
+        bool hasPassword)
+    {
+        var now = DateTimeOffset.UtcNow;
+        return new ConfiguredGitProfile(
+            new GitProfile(
+                Guid.NewGuid(),
+                name,
+                GitHostingProvider.Gitee,
+                $"https://gitee.com/cdsi-project/{name}.git",
+                "master",
+                GitAuthenticationMethod.Password,
+                "cdsi-project",
+                null,
+                IsDefault: false,
+                now,
+                now),
+            hasPassword);
+    }
+
+    private static GitProjectSyncRecord CreateGitSyncRecord(
+        Guid projectId,
+        Guid profileId,
+        string projectName,
+        string profileName)
+    {
+        return new GitProjectSyncRecord(
+            projectId,
+            projectName,
+            AssetCollectionType.Text,
+            profileId,
+            profileName,
+            GitHostingProvider.GitHub,
+            "https://github.com/cdsi-project/articles.git",
+            "main",
+            "abcdef0123456789",
+            SyncedFiles: 2,
+            SyncedBytes: 128,
+            CreatedCommit: true,
+            DateTimeOffset.UtcNow);
     }
 
     private static AssetListItem CreateAsset(

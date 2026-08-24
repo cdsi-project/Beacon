@@ -14,24 +14,7 @@ public sealed class AssetCollectionService(IAssetCollectionRepository repository
         IReadOnlyCollection<Guid>? backupProfileIds = null,
         CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(name);
-        var normalizedName = name.Trim();
-        if (normalizedName.Length == 0)
-        {
-            throw new ArgumentException("资产清单名称不能为空。", nameof(name));
-        }
-
-        if (normalizedName.Length > MaximumNameLength)
-        {
-            throw new ArgumentException(
-                $"资产清单名称不能超过 {MaximumNameLength} 个字符。",
-                nameof(name));
-        }
-
-        if (!Enum.IsDefined(type))
-        {
-            throw new ArgumentOutOfRangeException(nameof(type));
-        }
+        var normalizedName = ValidateDetails(name, type);
 
         var normalizedBackupProfileIds = backupProfileIds?
             .Distinct()
@@ -48,10 +31,32 @@ public sealed class AssetCollectionService(IAssetCollectionRepository repository
         };
         if (!await repository.CreateAssetCollectionAsync(collection, cancellationToken))
         {
-            throw new InvalidOperationException("已存在同名资产清单。请使用其他名称。");
+            throw new InvalidOperationException("已存在同名项目。请使用其他名称。");
         }
 
         return collection;
+    }
+
+    public async Task<AssetCollection> UpdateAsync(
+        Guid collectionId,
+        string name,
+        AssetCollectionType type,
+        CancellationToken cancellationToken = default)
+    {
+        var normalizedName = ValidateDetails(name, type);
+        var existing = await GetRequiredAsync(collectionId, cancellationToken);
+        var updated = existing with
+        {
+            Name = normalizedName,
+            Type = type,
+            UpdatedAt = DateTimeOffset.UtcNow
+        };
+        if (!await repository.UpdateAssetCollectionAsync(updated, cancellationToken))
+        {
+            throw new InvalidOperationException("已存在同名项目。请使用其他名称。");
+        }
+
+        return updated;
     }
 
     public Task<IReadOnlyList<AssetCollectionSummary>> ListAsync(
@@ -160,6 +165,30 @@ public sealed class AssetCollectionService(IAssetCollectionRepository repository
     {
         return await repository.GetAssetCollectionAsync(collectionId, cancellationToken)
             ?? throw new KeyNotFoundException("资产清单不存在或已被移除。");
+    }
+
+    private static string ValidateDetails(string name, AssetCollectionType type)
+    {
+        ArgumentNullException.ThrowIfNull(name);
+        var normalizedName = name.Trim();
+        if (normalizedName.Length == 0)
+        {
+            throw new ArgumentException("项目名称不能为空。", nameof(name));
+        }
+
+        if (normalizedName.Length > MaximumNameLength)
+        {
+            throw new ArgumentException(
+                $"项目名称不能超过 {MaximumNameLength} 个字符。",
+                nameof(name));
+        }
+
+        if (!Enum.IsDefined(type))
+        {
+            throw new ArgumentOutOfRangeException(nameof(type));
+        }
+
+        return normalizedName;
     }
 }
 

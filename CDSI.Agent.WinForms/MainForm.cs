@@ -26,6 +26,7 @@ public sealed partial class MainForm : Form
     private readonly ObjectStorageProfileService _storageService;
     private readonly OpenWebSettingsService _openWebSettingsService;
     private readonly GitProfileService _gitProfileService;
+    private readonly GitProjectSyncService _gitProjectSyncService;
     private readonly OpenWebArticlePublishingService _openWebPublishingService;
     private readonly ObjectStorageBackupService _objectStorageBackupService;
     private readonly ObjectStorageRestoreService _objectStorageRestoreService;
@@ -74,6 +75,7 @@ public sealed partial class MainForm : Form
         ObjectStorageRestoreService objectStorageRestoreService,
         ObjectStorageManagementService objectStorageManagementService,
         AssetCollectionService assetCollectionService,
+        GitProjectSyncService gitProjectSyncService,
         AssetTagService assetTagService,
         ManagedAssetTransferService transferService,
         LocalDatabaseBackupService localDatabaseBackupService,
@@ -96,6 +98,7 @@ public sealed partial class MainForm : Form
         _objectStorageRestoreService = objectStorageRestoreService;
         _objectStorageManagementService = objectStorageManagementService;
         _assetCollectionService = assetCollectionService;
+        _gitProjectSyncService = gitProjectSyncService;
         _assetTagService = assetTagService;
         _transferService = transferService;
         _localDatabaseBackupService = localDatabaseBackupService;
@@ -207,6 +210,7 @@ public sealed partial class MainForm : Form
         ConfigureAssetDirectoryTab();
         ConfigureAssetCollectionTab();
         ConfigureCloudBackupManagementTab();
+        ConfigureGitProjectManagementTab();
         ConfigureStatisticsTab();
         _assetGrid.SelectionChanged += AssetGrid_SelectionChanged;
 
@@ -234,6 +238,7 @@ public sealed partial class MainForm : Form
                 _duplicatesTabPage,
                 _collectionsTabPage,
                 _cloudBackupsTabPage,
+                _gitProjectsTabPage,
                 _statisticsTabPage
             ]);
 
@@ -736,6 +741,7 @@ public sealed partial class MainForm : Form
             _gitProfileService);
         var settingsResult = settingsForm.ShowDialog(this);
         await _volumeReconciliationService.ReconcileAsync();
+        await RefreshAssetCollectionsAsync();
         await TryCreateAutomaticDatabaseBackupAsync();
         if (settingsResult == DialogResult.OK &&
             settingsForm.InitialScanRootIds.Count > 0)

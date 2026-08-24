@@ -12,6 +12,10 @@ public interface IAssetCollectionRepository
         Guid collectionId,
         CancellationToken cancellationToken = default);
 
+    Task<bool> UpdateAssetCollectionAsync(
+        AssetCollection collection,
+        CancellationToken cancellationToken = default);
+
     Task<IReadOnlyList<AssetCollectionSummary>> ListAssetCollectionsAsync(
         CancellationToken cancellationToken = default);
 

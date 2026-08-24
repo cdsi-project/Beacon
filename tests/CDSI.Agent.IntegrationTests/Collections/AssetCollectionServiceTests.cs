@@ -10,6 +10,77 @@ namespace CDSI.Agent.IntegrationTests.Collections;
 public sealed class AssetCollectionServiceTests
 {
     [Fact]
+    public async Task Update_PreservesIdentityMembersAndBackupBindings()
+    {
+        using var directory = new TestDirectory();
+        var repository = new SqliteAssetRepository(Path.Combine(directory.Path, "cdsi.db"));
+        await repository.InitializeAsync();
+        var now = DateTimeOffset.UtcNow;
+        var profile = new ObjectStorageProfile(
+            Guid.NewGuid(),
+            "阿里云主存储",
+            ObjectStorageProvider.AliyunOss,
+            "https://oss-cn-beijing.aliyuncs.com",
+            "beacon-assets",
+            "oss-cn-beijing",
+            UseHttps: true,
+            "access-key-id",
+            now,
+            now);
+        await repository.SaveStorageProfileAsync(profile);
+        var deviceId = await repository.GetOrCreateDeviceIdAsync();
+        var registered = Assert.Single(await repository.RegisterLocalFilesAsync(
+            deviceId,
+            [new DiscoveredFile(
+                Path.Combine(directory.Path, "episode.mp4"),
+                "episode.mp4",
+                ".mp4",
+                "video/mp4",
+                128,
+                now,
+                now)],
+            now));
+        var service = new AssetCollectionService(repository);
+        var project = await service.CreateAsync(
+            "第一版名称",
+            AssetCollectionType.Video,
+            [profile.Id]);
+        await service.AddAssetsAsync(project.Id, [registered.AssetId]);
+        var otherProject = await service.CreateAsync(
+            "其他项目",
+            AssetCollectionType.Mixed);
+
+        var updated = await service.UpdateAsync(
+            project.Id,
+            "  最终名称  ",
+            AssetCollectionType.Mixed);
+
+        var loaded = await repository.GetAssetCollectionAsync(project.Id);
+        var summary = Assert.Single(
+            await service.ListAsync(),
+            item => item.Id == project.Id);
+        Assert.Equal(project.Id, updated.Id);
+        Assert.Equal(project.CreatedAt, updated.CreatedAt);
+        Assert.Equal("最终名称", updated.Name);
+        Assert.Equal(AssetCollectionType.Mixed, updated.Type);
+        Assert.Equal([profile.Id], loaded?.BackupProfileIds);
+        Assert.Equal("最终名称", loaded?.Name);
+        Assert.Equal(AssetCollectionType.Mixed, summary.Type);
+        Assert.Single(await service.GetMembersAsync(project.Id));
+
+        var conflict = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.UpdateAsync(
+                otherProject.Id,
+                "最终名称",
+                AssetCollectionType.Text));
+        Assert.Contains("已存在同名项目", conflict.Message);
+        var unchanged = await repository.GetAssetCollectionAsync(otherProject.Id);
+        Assert.Equal("其他项目", unchanged?.Name);
+        Assert.Equal(AssetCollectionType.Mixed, unchanged?.Type);
+        SqliteConnection.ClearAllPools();
+    }
+
+    [Fact]
     public async Task CreateAddRemoveDeleteAndPrepareSync_PreservesLocalAsset()
     {
         using var directory = new TestDirectory();

@@ -47,7 +47,7 @@ public sealed class SqliteAssetCollectionRepositoryTests
                 UPDATE asset_collections
                 SET backup_profile_id = $profile_id
                 WHERE id = $collection_id;
-                DELETE FROM schema_migrations WHERE version = 25;
+                DELETE FROM schema_migrations WHERE version >= 25;
                 """;
             command.Parameters.AddWithValue("$profile_id", profile.Id.ToString("D"));
             command.Parameters.AddWithValue("$collection_id", collection.Id.ToString("D"));

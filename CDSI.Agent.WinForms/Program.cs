@@ -12,6 +12,7 @@ using CDSI.Agent.Core.Abstractions;
 using CDSI.Agent.Core.Storage;
 using CDSI.Agent.Infrastructure.FileSystem;
 using CDSI.Agent.Infrastructure.Fingerprints;
+using CDSI.Agent.Infrastructure.Git;
 using CDSI.Agent.Infrastructure.Identity;
 using CDSI.Agent.Infrastructure.Metadata;
 using CDSI.Agent.Infrastructure.OpenWeb;
@@ -110,6 +111,12 @@ static class Program
                 workspaceProvisioner,
                 new VerifiedManagedFileTransfer());
             var assetCollectionService = new AssetCollectionService(repository);
+            var gitProjectSyncService = new GitProjectSyncService(
+                assetCollectionService,
+                gitProfileService,
+                workspaceService,
+                new GitCliProjectSynchronizer(),
+                repository);
             var assetTagService = new AssetTagService(repository);
             var fingerprintService = new FingerprintApplicationService(
                 fingerprintEngine,
@@ -135,6 +142,7 @@ static class Program
                 objectStorageRestoreService,
                 objectStorageManagementService,
                 assetCollectionService,
+                gitProjectSyncService,
                 assetTagService,
                 transferService,
                 localDatabaseBackupService,

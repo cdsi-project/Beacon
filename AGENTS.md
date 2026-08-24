@@ -10,7 +10,7 @@ It runs on the creator's own device and is responsible for discovering, indexing
 
 The agent must be designed as a **local-first, privacy-conscious, non-destructive system**.
 
-In the target architecture, CDSI Server is the optional control plane, CDSI Beacon is the local execution plane, and cloud storage such as Aliyun OSS, AWS S3, Cloudflare R2, Tencent COS, MinIO, NAS, or local filesystem is the data/storage plane. The current v0.201 application operates without CDSI Server.
+In the target architecture, CDSI Server is the optional control plane, CDSI Beacon is the local execution plane, and cloud storage such as Aliyun OSS, AWS S3, Cloudflare R2, Tencent COS, MinIO, NAS, or local filesystem is the data/storage plane. The current v0.204 application operates without CDSI Server.
 
 ---
 
@@ -43,14 +43,16 @@ The agent should help answer questions such as:
 - Which files are likely source assets, drafts, finals, covers, subtitles, references, or derivatives?
 - Which assets are related even if they are stored in different folders?
 
-### 1.1 Current Repository Baseline (v0.201)
+### 1.1 Current Repository Baseline (v0.204)
 
-The current baseline is v0.201, a working Windows desktop application built with .NET 10, WinForms, and SQLite. Before planning or implementing a change, distinguish these implemented capabilities from future requirements:
+The current baseline is v0.204, a working Windows desktop application built with .NET 10, WinForms, and SQLite. Before planning or implementing a change, distinguish these implemented capabilities from future requirements:
 
 - local workspace and multiple read-only scan roots
 - stable local Asset IDs and local Project IDs
 - paged asset search, tags, duplicate detection, media metadata, and statistics
-- project membership and project-bound cloud backup
+- project creation, local name/type editing, membership, and project-bound cloud backup
+- explicit single-project Git sync to a selected configured GitHub or Gitee repository, with a stable ProjectId manifest and non-overwrite safeguards
+- local Git project management backed by latest-successful sync records; listing and search do not contact remote repositories
 - Aliyun OSS, Tencent COS, and Qiniu Kodo storage adapters
 - verified multipart upload, restore, and explicit remote deletion
 - cloud-backup management grouped by project-name object-key prefix
@@ -59,7 +61,7 @@ The current baseline is v0.201, a working Windows desktop application built with
 - a stable per-installation UUID stored outside SQLite and shown in the About panel
 - single-instance Windows desktop behavior
 
-The current application does **not** connect to CDSI Server, use temporary server-issued credentials, run AI/embedding pipelines, extract document bodies in the background, or send telemetry. Git profiles are configuration only; they do not clone, commit, or push.
+The current application does **not** connect to CDSI Server, use temporary server-issued credentials, run AI/embedding pipelines, extract document bodies in the background, or send telemetry. Saving a Git profile does not perform network activity; clone, commit, and push occur only after the user explicitly selects a project and repository and confirms synchronization.
 
 The cloud project model is transitional in v0.200: local projects have stable IDs, but remote objects still use `<project name>/<original filename>` and the cloud UI groups records by that prefix. Stable remote ProjectId manifests and cross-device project reconstruction are next-stage work, not existing behavior.
 
@@ -1039,7 +1041,7 @@ schema definition. Do not duplicate a full table-name inventory in this guide;
 it will drift from migrations. The current persistence model covers workspaces,
 volumes and scan roots, assets and locations, metadata, tags, projects and
 membership, storage profiles and remote locations, file/upload/restore audits,
-OpenWeb publications, Git profiles, and application settings.
+OpenWeb publications, Git profiles, latest Git project sync records, and application settings.
 
 The current schema uses `asset_collections` as the persisted project model.
 Database snapshots and their JSON manifests are filesystem artifacts under the

@@ -1027,6 +1027,42 @@ internal static class DatabaseMigrator
             await migrationCommand.ExecuteNonQueryAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
         }
+        if (currentVersion < 26)
+        {
+            await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+            await using var migrationCommand = connection.CreateCommand();
+            migrationCommand.Transaction = (SqliteTransaction)transaction;
+            migrationCommand.CommandText =
+                """
+                CREATE TABLE IF NOT EXISTS git_project_syncs (
+                    project_id TEXT NOT NULL,
+                    profile_id TEXT NOT NULL,
+                    project_name TEXT NOT NULL,
+                    project_type TEXT NOT NULL,
+                    profile_name TEXT NOT NULL,
+                    provider TEXT NOT NULL,
+                    repository_url TEXT NOT NULL,
+                    branch TEXT NOT NULL,
+                    commit_id TEXT NOT NULL,
+                    synced_files INTEGER NOT NULL CHECK(synced_files >= 0),
+                    synced_bytes INTEGER NOT NULL CHECK(synced_bytes >= 0),
+                    created_commit INTEGER NOT NULL CHECK(created_commit IN (0, 1)),
+                    synced_at TEXT NOT NULL,
+                    PRIMARY KEY (project_id, profile_id)
+                );
+
+                CREATE INDEX IF NOT EXISTS ix_git_project_syncs_synced_at
+                ON git_project_syncs(synced_at DESC);
+
+                INSERT INTO schema_migrations(version, applied_at)
+                VALUES (26, $applied_at);
+                """;
+            migrationCommand.Parameters.AddWithValue(
+                "$applied_at",
+                DateTimeOffset.UtcNow.ToString("O"));
+            await migrationCommand.ExecuteNonQueryAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+        }
     }
 
     private static async Task<bool> TableExistsAsync(

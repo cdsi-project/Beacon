@@ -13,26 +13,44 @@ internal sealed class AssetCollectionDialog : Form
 
     public AssetCollectionDialog(
         IReadOnlyCollection<ConfiguredObjectStorageProfile>? backupProfiles = null)
+        : this(backupProfiles, null, null)
     {
+    }
+
+    public AssetCollectionDialog(
+        string collectionName,
+        AssetCollectionType collectionType)
+        : this([], collectionName, collectionType)
+    {
+    }
+
+    private AssetCollectionDialog(
+        IReadOnlyCollection<ConfiguredObjectStorageProfile>? backupProfiles,
+        string? collectionName,
+        AssetCollectionType? collectionType)
+    {
+        var isEditing = collectionName is not null;
         backupProfiles ??= [];
         var availableBackupProfiles = backupProfiles
             .Where(profile => profile.HasStoredSecret)
             .OrderBy(profile => GetProviderOrder(profile.Profile.Provider))
             .ThenBy(profile => profile.Profile.DisplayName, StringComparer.OrdinalIgnoreCase)
             .ToArray();
-        Text = "新建项目";
+        Text = isEditing ? "编辑项目" : "新建项目";
         StartPosition = FormStartPosition.CenterParent;
-        ClientSize = new Size(640, 410);
-        MinimumSize = new Size(560, 380);
+        ClientSize = isEditing ? new Size(640, 220) : new Size(640, 410);
+        MinimumSize = isEditing ? new Size(560, 210) : new Size(560, 380);
         ShowInTaskbar = false;
         Font = new Font("Segoe UI", 9F);
         AutoScaleMode = AutoScaleMode.Dpi;
+
+        var actionRow = isEditing ? 2 : 3;
 
         var layout = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
             ColumnCount = 2,
-            RowCount = 4,
+            RowCount = actionRow + 1,
             Padding = new Padding(20),
             BackColor = Color.White
         };
@@ -40,7 +58,11 @@ internal sealed class AssetCollectionDialog : Form
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));
         layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));
-        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        if (!isEditing)
+        {
+            layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        }
+
         layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 64));
 
         layout.Controls.Add(CreateLabel("名称"), 0, 0);
@@ -48,6 +70,7 @@ internal sealed class AssetCollectionDialog : Form
         _nameTextBox.Margin = new Padding(0, 7, 0, 7);
         _nameTextBox.MaxLength = 120;
         _nameTextBox.AccessibleName = "项目名称";
+        _nameTextBox.Text = collectionName ?? string.Empty;
         layout.Controls.Add(_nameTextBox, 1, 0);
 
         layout.Controls.Add(CreateLabel("类型"), 0, 1);
@@ -59,40 +82,44 @@ internal sealed class AssetCollectionDialog : Form
         _typeComboBox.Items.AddRange(CollectionTypeChoices
             .Select(choice => (object)choice)
             .ToArray());
-        _typeComboBox.SelectedIndex = CollectionTypeChoices.Count - 1;
+        _typeComboBox.SelectedItem = CollectionTypeChoices.Single(choice =>
+            choice.Type == (collectionType ?? AssetCollectionType.Mixed));
         layout.Controls.Add(_typeComboBox, 1, 1);
 
-        layout.Controls.Add(CreateLabel("云端备份"), 0, 2);
-        var backupLayout = new TableLayoutPanel
+        if (!isEditing)
         {
-            Dock = DockStyle.Fill,
-            ColumnCount = 1,
-            RowCount = 2,
-            Margin = new Padding(0, 6, 0, 6)
-        };
-        backupLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
-        backupLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        _enableCloudBackupCheckBox.Dock = DockStyle.Fill;
-        _enableCloudBackupCheckBox.Text = availableBackupProfiles.Length == 0
-            ? "开启云端备份（暂无可用配置）"
-            : "开启云端备份";
-        _enableCloudBackupCheckBox.Enabled = availableBackupProfiles.Length > 0;
-        _enableCloudBackupCheckBox.AccessibleName = "开启云端备份";
-        _enableCloudBackupCheckBox.CheckedChanged += (_, _) =>
-            _backupProfileListBox.Enabled = _enableCloudBackupCheckBox.Checked;
-        backupLayout.Controls.Add(_enableCloudBackupCheckBox, 0, 0);
+            layout.Controls.Add(CreateLabel("云端备份"), 0, 2);
+            var backupLayout = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                ColumnCount = 1,
+                RowCount = 2,
+                Margin = new Padding(0, 6, 0, 6)
+            };
+            backupLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
+            backupLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+            _enableCloudBackupCheckBox.Dock = DockStyle.Fill;
+            _enableCloudBackupCheckBox.Text = availableBackupProfiles.Length == 0
+                ? "开启云端备份（暂无可用配置）"
+                : "开启云端备份";
+            _enableCloudBackupCheckBox.Enabled = availableBackupProfiles.Length > 0;
+            _enableCloudBackupCheckBox.AccessibleName = "开启云端备份";
+            _enableCloudBackupCheckBox.CheckedChanged += (_, _) =>
+                _backupProfileListBox.Enabled = _enableCloudBackupCheckBox.Checked;
+            backupLayout.Controls.Add(_enableCloudBackupCheckBox, 0, 0);
 
-        _backupProfileListBox.Dock = DockStyle.Fill;
-        _backupProfileListBox.CheckOnClick = true;
-        _backupProfileListBox.Enabled = false;
-        _backupProfileListBox.IntegralHeight = false;
-        _backupProfileListBox.DisplayMember = nameof(BackupProfileChoice.DisplayName);
-        _backupProfileListBox.AccessibleName = "云端备份配置列表";
-        _backupProfileListBox.Items.AddRange(availableBackupProfiles
-            .Select(profile => (object)new BackupProfileChoice(profile.Profile))
-            .ToArray());
-        backupLayout.Controls.Add(_backupProfileListBox, 0, 1);
-        layout.Controls.Add(backupLayout, 1, 2);
+            _backupProfileListBox.Dock = DockStyle.Fill;
+            _backupProfileListBox.CheckOnClick = true;
+            _backupProfileListBox.Enabled = false;
+            _backupProfileListBox.IntegralHeight = false;
+            _backupProfileListBox.DisplayMember = nameof(BackupProfileChoice.DisplayName);
+            _backupProfileListBox.AccessibleName = "云端备份配置列表";
+            _backupProfileListBox.Items.AddRange(availableBackupProfiles
+                .Select(profile => (object)new BackupProfileChoice(profile.Profile))
+                .ToArray());
+            backupLayout.Controls.Add(_backupProfileListBox, 0, 1);
+            layout.Controls.Add(backupLayout, 1, 2);
+        }
 
         var buttons = new FlowLayoutPanel
         {
@@ -101,16 +128,16 @@ internal sealed class AssetCollectionDialog : Form
             WrapContents = false,
             Padding = new Padding(0, 12, 0, 0)
         };
-        var createButton = new Button
+        var submitButton = new Button
         {
-            Text = "创建",
+            Text = isEditing ? "保存" : "创建",
             Size = new Size(96, 32),
             BackColor = Color.FromArgb(24, 121, 78),
             ForeColor = Color.White,
             FlatStyle = FlatStyle.Flat
         };
-        createButton.FlatAppearance.BorderSize = 0;
-        createButton.Click += CreateButton_Click;
+        submitButton.FlatAppearance.BorderSize = 0;
+        submitButton.Click += SubmitButton_Click;
         var cancelButton = new Button
         {
             Text = "取消",
@@ -118,12 +145,12 @@ internal sealed class AssetCollectionDialog : Form
             Size = new Size(88, 32),
             Margin = new Padding(8, 0, 0, 0)
         };
-        buttons.Controls.Add(createButton);
+        buttons.Controls.Add(submitButton);
         buttons.Controls.Add(cancelButton);
-        layout.Controls.Add(buttons, 0, 3);
+        layout.Controls.Add(buttons, 0, actionRow);
         layout.SetColumnSpan(buttons, 2);
 
-        AcceptButton = createButton;
+        AcceptButton = submitButton;
         CancelButton = cancelButton;
         Controls.Add(layout);
     }
@@ -160,13 +187,13 @@ internal sealed class AssetCollectionDialog : Form
         };
     }
 
-    private void CreateButton_Click(object? sender, EventArgs e)
+    private void SubmitButton_Click(object? sender, EventArgs e)
     {
         if (CollectionName.Length == 0)
         {
             MessageBox.Show(
                 this,
-                "请输入资产清单名称。",
+                "请输入项目名称。",
                 "CDSI Beacon",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Information);

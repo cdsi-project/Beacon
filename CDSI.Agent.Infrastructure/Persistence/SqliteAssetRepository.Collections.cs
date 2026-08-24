@@ -96,6 +96,27 @@ public sealed partial class SqliteAssetRepository : IAssetCollectionRepository
         };
     }
 
+    public async Task<bool> UpdateAssetCollectionAsync(
+        AssetCollection collection,
+        CancellationToken cancellationToken = default)
+    {
+        await using var connection = await OpenConnectionAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            UPDATE OR IGNORE asset_collections
+            SET name = $name,
+                type = $type,
+                updated_at = $updated_at
+            WHERE id = $id;
+            """;
+        command.Parameters.AddWithValue("$id", collection.Id.ToString("D"));
+        command.Parameters.AddWithValue("$name", collection.Name);
+        command.Parameters.AddWithValue("$type", collection.Type.ToString());
+        command.Parameters.AddWithValue("$updated_at", collection.UpdatedAt.ToString("O"));
+        return await command.ExecuteNonQueryAsync(cancellationToken) == 1;
+    }
+
     public async Task<IReadOnlyList<AssetCollectionSummary>> ListAssetCollectionsAsync(
         CancellationToken cancellationToken = default)
     {

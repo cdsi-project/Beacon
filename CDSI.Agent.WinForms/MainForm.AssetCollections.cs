@@ -1,4 +1,5 @@
 using CDSI.Agent.Application.Collections;
+using CDSI.Agent.Application.Git;
 using CDSI.Agent.Application.Storage;
 using CDSI.Agent.Core.Assets;
 using CDSI.Agent.Core.Collections;
@@ -17,10 +18,12 @@ public sealed partial class MainForm
     private readonly ToolStripMenuItem _addToCollectionMenuItem = new();
     private readonly ContextMenuStrip _projectContextMenu = new();
     private readonly ToolStripMenuItem _syncProjectContextMenuItem = new();
+    private readonly ToolStripMenuItem _syncProjectToGitMenuItem = new();
     private readonly ToolStripMenuItem _deleteProjectContextMenuItem = new();
     private readonly ContextMenuStrip _collectionMemberContextMenu = new();
     private readonly ToolStripMenuItem _removeCollectionMembersMenuItem = new();
     private IReadOnlyList<AssetCollectionSummary> _availableCollections = [];
+    private IReadOnlyList<ConfiguredGitProfile> _availableGitProfiles = [];
     private bool _isBusy;
     private bool _refreshingCollections;
 
@@ -48,11 +51,24 @@ public sealed partial class MainForm
         _createCollectionButton.Click += async (_, _) => await CreateCollectionAsync();
         _syncCollectionButton.Click += async (_, _) => await SyncSelectedCollectionAsync();
         _collectionGrid.SelectionChanged += CollectionGrid_SelectionChanged;
+        _collectionGrid.CellDoubleClick += async (_, args) =>
+        {
+            if (args.RowIndex < 0 || _isBusy)
+            {
+                return;
+            }
+
+            if (_collectionGrid.Rows[args.RowIndex].Tag is AssetCollectionSummary project)
+            {
+                await EditCollectionAsync(project);
+            }
+        };
         _collectionMemberGrid.SelectionChanged += (_, _) =>
             UpdateCollectionActionState();
         ConfigureProjectContextMenu(
             _projectContextMenu,
             _syncProjectContextMenuItem,
+            _syncProjectToGitMenuItem,
             _deleteProjectContextMenuItem);
         _syncProjectContextMenuItem.Click += async (_, _) =>
             await SyncSelectedCollectionAsync();
@@ -65,6 +81,10 @@ public sealed partial class MainForm
             args.Cancel = selectedProjects.Count == 0;
             _syncProjectContextMenuItem.Enabled = !_isBusy &&
                 selectedProjects.Count == 1;
+            ConfigureProjectGitMenu(
+                _syncProjectToGitMenuItem,
+                _availableGitProfiles,
+                !_isBusy && selectedProjects.Count == 1);
             _deleteProjectContextMenuItem.Enabled = !_isBusy &&
                 selectedProjects.Count > 0;
         };
@@ -141,15 +161,19 @@ public sealed partial class MainForm
     internal static void ConfigureProjectContextMenu(
         ContextMenuStrip contextMenu,
         ToolStripMenuItem syncItem,
+        ToolStripMenuItem syncToGitItem,
         ToolStripMenuItem deleteItem)
     {
         ArgumentNullException.ThrowIfNull(contextMenu);
         ArgumentNullException.ThrowIfNull(syncItem);
+        ArgumentNullException.ThrowIfNull(syncToGitItem);
         ArgumentNullException.ThrowIfNull(deleteItem);
         syncItem.Text = "同步到云端";
+        syncToGitItem.Text = "同步到Git";
         deleteItem.Text = "删除项目";
         contextMenu.Items.Clear();
         contextMenu.Items.Add(syncItem);
+        contextMenu.Items.Add(syncToGitItem);
         contextMenu.Items.Add(new ToolStripSeparator());
         contextMenu.Items.Add(deleteItem);
     }
@@ -344,6 +368,35 @@ public sealed partial class MainForm
         {
             ShowError("无法创建项目", exception);
             return null;
+        }
+    }
+
+    private async Task EditCollectionAsync(AssetCollectionSummary project)
+    {
+        using var dialog = new AssetCollectionDialog(project.Name, project.Type);
+        if (dialog.ShowDialog(this) != DialogResult.OK)
+        {
+            return;
+        }
+
+        SetBusy(true, allowCancel: false);
+        try
+        {
+            var updated = await _assetCollectionService.UpdateAsync(
+                project.Id,
+                dialog.CollectionName,
+                dialog.CollectionType);
+            await RefreshAssetCollectionsAsync(updated.Id);
+            await RefreshAssetPageAsync();
+            _statusLabel.Text = $"已更新项目：{updated.Name}";
+        }
+        catch (Exception exception)
+        {
+            ShowError("无法更新项目", exception);
+        }
+        finally
+        {
+            SetBusy(false);
         }
     }
 
@@ -941,8 +994,12 @@ public sealed partial class MainForm
     private async Task RefreshAssetCollectionsAsync(Guid? selectedCollectionId = null)
     {
         var currentId = selectedCollectionId ?? GetSelectedCollection()?.Id;
-        var collections = await _assetCollectionService.ListAsync();
+        var collectionsTask = _assetCollectionService.ListAsync();
+        var gitProfilesTask = _gitProfileService.ListAsync();
+        await Task.WhenAll(collectionsTask, gitProfilesTask);
+        var collections = await collectionsTask;
         _availableCollections = collections;
+        _availableGitProfiles = await gitProfilesTask;
         _refreshingCollections = true;
         try
         {
@@ -978,6 +1035,7 @@ public sealed partial class MainForm
 
         _collectionsTabPage.Text = $"项目管理 ({collections.Count:N0})";
         await RefreshSelectedCollectionMembersAsync();
+        await RefreshGitProjectsAsync();
     }
 
     internal static string FormatProjectBackupTarget(
