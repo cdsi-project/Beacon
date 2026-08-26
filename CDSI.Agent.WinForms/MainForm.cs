@@ -139,40 +139,7 @@ public sealed partial class MainForm : Form
         };
         mainLayout.Controls.Add(_mainMenuStrip, 0, 0);
 
-        var header = new Panel
-        {
-            Dock = DockStyle.Fill,
-            BackColor = Color.FromArgb(31, 37, 43),
-            Padding = new Padding(28, 13, 28, 10)
-        };
-        header.Controls.Add(new Label
-        {
-            AutoSize = true,
-            Text = "CDSI Beacon",
-            Font = new Font("Segoe UI Semibold", 18F),
-            ForeColor = Color.White,
-            Location = new Point(25, 11)
-        });
-        header.Controls.Add(new Label
-        {
-            AutoSize = true,
-            Text = "本地资产索引",
-            Font = new Font("Segoe UI", 9F),
-            ForeColor = Color.FromArgb(179, 190, 199),
-            Location = new Point(28, 45)
-        });
-        header.Controls.Add(new Label
-        {
-            AutoSize = false,
-            Dock = DockStyle.Right,
-            Width = 96,
-            Text = $"v{applicationVersion}",
-            TextAlign = ContentAlignment.TopRight,
-            Padding = new Padding(0, 6, 0, 0),
-            Font = new Font("Segoe UI Semibold", 9F),
-            ForeColor = Color.FromArgb(179, 190, 199),
-            AccessibleName = "应用版本"
-        });
+        var header = CreateMainBanner(applicationVersion);
         mainLayout.Controls.Add(header, 0, 1);
 
         _progressPanel.Dock = DockStyle.Fill;
@@ -285,6 +252,65 @@ public sealed partial class MainForm : Form
         form.WindowState = FormWindowState.Maximized;
     }
 
+    internal static TableLayoutPanel CreateMainBanner(string applicationVersion)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(applicationVersion);
+
+        var banner = new TableLayoutPanel
+        {
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            Dock = DockStyle.Fill,
+            ColumnCount = 2,
+            RowCount = 2,
+            GrowStyle = TableLayoutPanelGrowStyle.FixedSize,
+            Margin = Padding.Empty,
+            Padding = new Padding(28, 10, 28, 10),
+            BackColor = Color.FromArgb(31, 37, 43),
+            AccessibleName = "顶部 Banner"
+        };
+        banner.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        banner.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        banner.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        banner.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+
+        var titleLabel = new Label
+        {
+            AutoSize = true,
+            Margin = Padding.Empty,
+            Text = "CDSI Beacon",
+            Font = new Font("Segoe UI Semibold", 18F),
+            ForeColor = Color.White,
+            AccessibleName = "应用名称"
+        };
+        var subtitleLabel = new Label
+        {
+            AutoSize = true,
+            Margin = new Padding(0, 2, 0, 0),
+            Text = "本地资产索引",
+            Font = new Font("Segoe UI", 9F),
+            ForeColor = Color.FromArgb(179, 190, 199),
+            AccessibleName = "应用说明"
+        };
+        var versionLabel = new Label
+        {
+            AutoSize = true,
+            Anchor = AnchorStyles.Top | AnchorStyles.Right,
+            Margin = new Padding(20, 6, 0, 0),
+            Text = $"v{applicationVersion}",
+            TextAlign = ContentAlignment.TopRight,
+            Font = new Font("Segoe UI Semibold", 9F),
+            ForeColor = Color.FromArgb(179, 190, 199),
+            AccessibleName = "应用版本"
+        };
+
+        banner.Controls.Add(titleLabel, 0, 0);
+        banner.Controls.Add(subtitleLabel, 0, 1);
+        banner.Controls.Add(versionLabel, 1, 0);
+        banner.SetRowSpan(versionLabel, 2);
+        return banner;
+    }
+
     internal static void ConfigureMainContentLayout(
         TableLayoutPanel mainLayout,
         Control content,
@@ -296,8 +322,8 @@ public sealed partial class MainForm : Form
         ArgumentNullException.ThrowIfNull(progress);
         ArgumentNullException.ThrowIfNull(progressRowStyle);
         mainLayout.RowStyles.Clear();
-        mainLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 30));
-        mainLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 72));
+        mainLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        mainLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         mainLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         progressRowStyle.SizeType = SizeType.Absolute;
         mainLayout.RowStyles.Add(progressRowStyle);

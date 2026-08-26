@@ -98,6 +98,8 @@ public sealed class MainFormLayoutTests
         Assert.Equal(2, mainLayout.GetRow(content));
         Assert.Equal(3, mainLayout.GetRow(progress));
         Assert.Equal(4, mainLayout.RowStyles.Count);
+        Assert.Equal(SizeType.AutoSize, mainLayout.RowStyles[0].SizeType);
+        Assert.Equal(SizeType.AutoSize, mainLayout.RowStyles[1].SizeType);
         Assert.Equal(SizeType.Percent, mainLayout.RowStyles[2].SizeType);
         Assert.Equal(100, mainLayout.RowStyles[2].Height);
         Assert.Equal(SizeType.Absolute, mainLayout.RowStyles[3].SizeType);
@@ -108,6 +110,33 @@ public sealed class MainFormLayoutTests
 
         Assert.Equal(58, mainLayout.RowStyles[3].Height);
         Assert.True(progress.Visible);
+    }
+
+    [Fact]
+    public void CreateMainBanner_GrowsWhenDisplayScaledTextNeedsMoreHeight()
+    {
+        using var banner = MainForm.CreateMainBanner("0.205");
+        banner.Size = new Size(900, 1);
+        banner.CreateControl();
+        banner.PerformLayout();
+        var initialHeight = banner.GetPreferredSize(new Size(900, 0)).Height;
+        var titleLabel = Assert.Single(
+            banner.Controls.OfType<Label>(),
+            label => label.AccessibleName == "应用名称");
+
+        titleLabel.Font = new Font(
+            titleLabel.Font.FontFamily,
+            titleLabel.Font.Size * 2,
+            titleLabel.Font.Style);
+        banner.PerformLayout();
+        var scaledHeight = banner.GetPreferredSize(new Size(900, 0)).Height;
+
+        Assert.True(banner.AutoSize);
+        Assert.Equal(AutoSizeMode.GrowAndShrink, banner.AutoSizeMode);
+        Assert.All(
+            banner.RowStyles.Cast<RowStyle>(),
+            style => Assert.Equal(SizeType.AutoSize, style.SizeType));
+        Assert.True(scaledHeight > initialHeight);
     }
 
     [Theory]

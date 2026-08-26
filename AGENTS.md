@@ -10,7 +10,7 @@ It runs on the creator's own device and is responsible for discovering, indexing
 
 The agent must be designed as a **local-first, privacy-conscious, non-destructive system**.
 
-In the target architecture, CDSI Server is the optional control plane, CDSI Beacon is the local execution plane, and cloud storage such as Aliyun OSS, AWS S3, Cloudflare R2, Tencent COS, MinIO, NAS, or local filesystem is the data/storage plane. The current v0.204 application operates without CDSI Server.
+In the target architecture, CDSI Server is the optional control plane, CDSI Beacon is the local execution plane, and cloud storage such as Aliyun OSS, AWS S3, Cloudflare R2, Tencent COS, MinIO, NAS, or local filesystem is the data/storage plane. The current v0.205 application operates without CDSI Server.
 
 ---
 
@@ -43,9 +43,9 @@ The agent should help answer questions such as:
 - Which files are likely source assets, drafts, finals, covers, subtitles, references, or derivatives?
 - Which assets are related even if they are stored in different folders?
 
-### 1.1 Current Repository Baseline (v0.204)
+### 1.1 Current Repository Baseline (v0.205)
 
-The current baseline is v0.204, a working Windows desktop application built with .NET 10, WinForms, and SQLite. Before planning or implementing a change, distinguish these implemented capabilities from future requirements:
+The current baseline is v0.205, a working Windows desktop application built with .NET 10, WinForms, and SQLite. Before planning or implementing a change, distinguish these implemented capabilities from future requirements:
 
 - local workspace and multiple read-only scan roots
 - stable local Asset IDs and local Project IDs
