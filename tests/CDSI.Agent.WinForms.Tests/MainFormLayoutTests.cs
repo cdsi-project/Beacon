@@ -115,7 +115,7 @@ public sealed class MainFormLayoutTests
     [Fact]
     public void CreateMainBanner_GrowsWhenDisplayScaledTextNeedsMoreHeight()
     {
-        using var banner = MainForm.CreateMainBanner("0.206");
+        using var banner = MainForm.CreateMainBanner("0.2.10");
         banner.Size = new Size(900, 1);
         banner.CreateControl();
         banner.PerformLayout();
@@ -137,6 +137,18 @@ public sealed class MainFormLayoutTests
             banner.RowStyles.Cast<RowStyle>(),
             style => Assert.Equal(SizeType.AutoSize, style.SizeType));
         Assert.True(scaledHeight > initialHeight);
+    }
+
+    [Fact]
+    public void ApplicationVersion_UsesThreeSegmentsWithATwoDigitRevision()
+    {
+        var version = MainForm.GetApplicationVersion();
+        var parts = version.Split('.');
+
+        Assert.Equal(3, parts.Length);
+        Assert.All(parts, part => Assert.True(int.TryParse(part, out _)));
+        Assert.Equal(2, parts[2].Length);
+        Assert.InRange(int.Parse(parts[2]), 10, 99);
     }
 
     [Theory]

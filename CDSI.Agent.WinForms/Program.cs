@@ -127,6 +127,12 @@ static class Program
                     new GenericMetadataExtractor()
                 ],
                 repository);
+            using var updateHttpClient = new HttpClient
+            {
+                Timeout = TimeSpan.FromSeconds(10)
+            };
+            var applicationUpdateChecker = new GiteeApplicationUpdateChecker(
+                updateHttpClient);
             using var mainForm = new MainForm(
                 scanService,
                 fingerprintService,
@@ -146,6 +152,7 @@ static class Program
                 assetTagService,
                 transferService,
                 localDatabaseBackupService,
+                applicationUpdateChecker,
                 clientIdentity.Value,
                 dataDirectory,
                 runtimeLog);

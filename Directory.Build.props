@@ -5,9 +5,9 @@
     <LangVersion>latest</LangVersion>
     <CdsiVersionFile>$(MSBuildThisFileDirectory)VERSION</CdsiVersionFile>
     <CdsiVersion>$([System.IO.File]::ReadAllText('$(CdsiVersionFile)').Trim())</CdsiVersion>
-    <Version>$(CdsiVersion).0</Version>
-    <AssemblyVersion>$(CdsiVersion).0.0</AssemblyVersion>
-    <FileVersion>$(CdsiVersion).0.0</FileVersion>
+    <Version>$(CdsiVersion)</Version>
+    <AssemblyVersion>$(CdsiVersion).0</AssemblyVersion>
+    <FileVersion>$(CdsiVersion).0</FileVersion>
     <InformationalVersion>$(CdsiVersion)</InformationalVersion>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <Authors>CDSI Project</Authors>
@@ -18,4 +18,10 @@
     <RepositoryUrl>https://github.com/cdsi-project/Beacon.git</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
   </PropertyGroup>
+
+  <Target Name="ValidateCdsiVersion" BeforeTargets="PrepareForBuild">
+    <Error
+      Condition="$([System.Text.RegularExpressions.Regex]::IsMatch('$(CdsiVersion)', '^[0-9]+[.][0-9]+[.][1-9][0-9]$')) != 'True'"
+      Text="VERSION must use x.x.xx format with the final component between 10 and 99." />
+  </Target>
 </Project>

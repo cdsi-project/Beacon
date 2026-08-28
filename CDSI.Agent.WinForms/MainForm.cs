@@ -36,6 +36,7 @@ public sealed partial class MainForm : Form
     private readonly FingerprintApplicationService _fingerprintService;
     private readonly MetadataExtractionApplicationService _metadataService;
     private readonly LocalDatabaseBackupService _localDatabaseBackupService;
+    private readonly GiteeApplicationUpdateChecker _applicationUpdateChecker;
     private readonly string _clientId;
     private readonly System.Windows.Forms.Timer _databaseBackupTimer = new();
     private readonly TableLayoutPanel _progressPanel = new();
@@ -79,6 +80,7 @@ public sealed partial class MainForm : Form
         AssetTagService assetTagService,
         ManagedAssetTransferService transferService,
         LocalDatabaseBackupService localDatabaseBackupService,
+        GiteeApplicationUpdateChecker applicationUpdateChecker,
         string clientId,
         string dataDirectory,
         RuntimeLogService runtimeLog)
@@ -102,6 +104,8 @@ public sealed partial class MainForm : Form
         _assetTagService = assetTagService;
         _transferService = transferService;
         _localDatabaseBackupService = localDatabaseBackupService;
+        _applicationUpdateChecker = applicationUpdateChecker ??
+            throw new ArgumentNullException(nameof(applicationUpdateChecker));
         _clientId = string.IsNullOrWhiteSpace(clientId)
             ? throw new ArgumentException("Client ID is required.", nameof(clientId))
             : clientId;
@@ -755,6 +759,8 @@ public sealed partial class MainForm : Form
         {
             SetBusy(false);
         }
+
+        await CheckForUpdatesAsync(showCurrentStatus: false);
     }
 
     private async Task OpenSettingsAsync()

@@ -18,6 +18,7 @@ public sealed partial class MainForm
     private readonly ToolStripMenuItem _openDatabaseBackupDirectoryMenuItem = new();
     private readonly ToolStripMenuItem _settingsMenuItem = new();
     private readonly ToolStripMenuItem _mainAssetMenuItem = new();
+    private readonly ToolStripMenuItem _checkForUpdatesMenuItem = new();
 
     private void ConfigureMainMenu()
     {
@@ -139,6 +140,9 @@ public sealed partial class MainForm
         var thirdPartyItem = new ToolStripMenuItem("第三方许可(&T)");
         thirdPartyItem.Click += (_, _) =>
             ShowLegalDocuments(LegalDocumentPage.ThirdPartyNotices);
+        _checkForUpdatesMenuItem.Text = "检查更新(&U)";
+        _checkForUpdatesMenuItem.Click += async (_, _) =>
+            await CheckForUpdatesAsync(showCurrentStatus: true);
         var aboutItem = new ToolStripMenuItem("关于 CDSI Beacon(&A)");
         aboutItem.Click += (_, _) => ShowAboutDialog();
         helpMenu.DropDownItems.AddRange(
@@ -149,6 +153,7 @@ public sealed partial class MainForm
                 licenseItem,
                 thirdPartyItem,
                 new ToolStripSeparator(),
+                _checkForUpdatesMenuItem,
                 aboutItem
             ]);
 

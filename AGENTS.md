@@ -10,7 +10,7 @@ It runs on the creator's own device and is responsible for discovering, indexing
 
 The agent must be designed as a **local-first, privacy-conscious, non-destructive system**.
 
-In the target architecture, CDSI Server is the optional control plane, CDSI Beacon is the local execution plane, and cloud storage such as Aliyun OSS, AWS S3, Cloudflare R2, Tencent COS, MinIO, NAS, or local filesystem is the data/storage plane. The current v0.206 application operates without CDSI Server.
+In the target architecture, CDSI Server is the optional control plane, CDSI Beacon is the local execution plane, and cloud storage such as Aliyun OSS, AWS S3, Cloudflare R2, Tencent COS, MinIO, NAS, or local filesystem is the data/storage plane. The current v0.2.11 application operates without CDSI Server.
 
 ---
 
@@ -43,9 +43,9 @@ The agent should help answer questions such as:
 - Which files are likely source assets, drafts, finals, covers, subtitles, references, or derivatives?
 - Which assets are related even if they are stored in different folders?
 
-### 1.1 Current Repository Baseline (v0.206)
+### 1.1 Current Repository Baseline (v0.2.11)
 
-The current baseline is v0.206, a working Windows desktop application built with .NET 10, WinForms, and SQLite. Before planning or implementing a change, distinguish these implemented capabilities from future requirements:
+The current baseline is v0.2.11, a working Windows desktop application built with .NET 10, WinForms, and SQLite. Before planning or implementing a change, distinguish these implemented capabilities from future requirements:
 
 - local workspace and multiple read-only scan roots
 - stable local Asset IDs and local Project IDs
@@ -60,8 +60,9 @@ The current baseline is v0.206, a working Windows desktop application built with
 - local SQLite consistent snapshots, audit records, task progress, and run logs
 - a stable per-installation UUID stored outside SQLite and shown in the About panel
 - single-instance Windows desktop behavior
+- asynchronous update discovery from the public Gitee repository VERSION file, with a manual Help-menu command and no automatic download or execution
 
-The current application does **not** connect to CDSI Server, use temporary server-issued credentials, run AI/embedding pipelines, extract document bodies in the background, or send telemetry. Saving a Git profile does not perform network activity; clone, commit, and push occur only after the user explicitly selects a project and repository and confirms synchronization.
+The current application does **not** connect to CDSI Server, use temporary server-issued credentials, run AI/embedding pipelines, extract document bodies in the background, or send telemetry. Startup update discovery performs a read-only request for Gitee's public `VERSION` file and sends no asset metadata, paths, configuration, credentials, or client ID. Saving a Git profile does not perform network activity; clone, commit, and push occur only after the user explicitly selects a project and repository and confirms synchronization.
 
 The cloud project model is transitional in v0.200: local projects have stable IDs, but remote objects still use `<project name>/<original filename>` and the cloud UI groups records by that prefix. Stable remote ProjectId manifests and cross-device project reconstruction are next-stage work, not existing behavior.
 
@@ -1535,7 +1536,7 @@ When modifying this repository:
 24. Make failures observable.
 25. Keep operations resumable where practical.
 26. Treat the repository-root `VERSION` file as the only application version source.
-27. For a code-version or release commit, update `VERSION` according to the repository's `0.001` version sequence and run the full Release test suite. Create the self-contained single-file `win-x64` publish output and smoke-check it when preparing a binary release; a documentation-only change does not require a version bump or binary publish.
+27. For a code-version or release commit, run `powershell -NoProfile -File scripts/Increment-Version.ps1` and use the repository's `x.y.zz` sequence. The final component is always two digits from `10` through `99`; increment `x.y.99` to `x.(y+1).10`. `v0.2.10` is the explicit successor to the legacy `v0.206`; preserve the update checker's explicit cutover handling instead of replacing it with ordinary `System.Version` ordering. Run the full Release test suite, create the self-contained single-file `win-x64` publish output, and smoke-check it when preparing a binary release; a documentation-only change does not require a version bump or binary publish.
 28. Use `dotnet test .\CDSI.Agent.slnx -c Release --no-restore` for the standard full suite after dependencies are restored. Do not run build, test, and publish concurrently against the same output directories because MSBuild file locks can make results nondeterministic.
 29. Keep new cloud uploads project-scoped. When adding whole-project restore, reconciliation, or deletion, use stable ProjectId/manifest identity; do not allow project names or object-key prefixes to become canonical identity. Preserve the current selected-replica restore/delete workflows until their replacement is complete.
 30. Preserve compatibility with legacy name-prefix cloud records used by released v0.200 and earlier versions. Require explicit confirmation before any migration, merge, overwrite, or remote deletion.
