@@ -6,6 +6,7 @@
     <AssemblyName>CDSI-Beacon</AssemblyName>
     <AssemblyTitle>CDSI Beacon</AssemblyTitle>
     <Product>CDSI Beacon</Product>
+    <ApplicationIcon>Beacon.ico</ApplicationIcon>
     <Nullable>enable</Nullable>
     <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>enable</ImplicitUsings>
