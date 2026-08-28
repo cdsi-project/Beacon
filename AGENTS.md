@@ -10,7 +10,7 @@ It runs on the creator's own device and is responsible for discovering, indexing
 
 The agent must be designed as a **local-first, privacy-conscious, non-destructive system**.
 
-In the target architecture, CDSI Server is the optional control plane, CDSI Beacon is the local execution plane, and cloud storage such as Aliyun OSS, AWS S3, Cloudflare R2, Tencent COS, MinIO, NAS, or local filesystem is the data/storage plane. The current v0.2.11 application operates without CDSI Server.
+In the target architecture, CDSI Server is the optional control plane, CDSI Beacon is the local execution plane, and cloud storage such as Aliyun OSS, AWS S3, Cloudflare R2, Tencent COS, MinIO, NAS, or local filesystem is the data/storage plane. The current v0.2.12 application operates without CDSI Server.
 
 ---
 
@@ -43,11 +43,12 @@ The agent should help answer questions such as:
 - Which files are likely source assets, drafts, finals, covers, subtitles, references, or derivatives?
 - Which assets are related even if they are stored in different folders?
 
-### 1.1 Current Repository Baseline (v0.2.11)
+### 1.1 Current Repository Baseline (v0.2.12)
 
-The current baseline is v0.2.11, a working Windows desktop application built with .NET 10, WinForms, and SQLite. Before planning or implementing a change, distinguish these implemented capabilities from future requirements:
+The current baseline is v0.2.12, a working Windows desktop application built with .NET 10, WinForms, and SQLite. Before planning or implementing a change, distinguish these implemented capabilities from future requirements:
 
 - local workspace and multiple read-only scan roots
+- per-root opt-in idle scan schedules with minute, hour, or day intervals; due work is deferred while Beacon is busy or a modal window is open
 - stable local Asset IDs and local Project IDs
 - paged asset search, tags, duplicate detection, media metadata, and statistics
 - project creation, local name/type editing, membership, and project-bound cloud backup
@@ -1049,6 +1050,9 @@ Database snapshots and their JSON manifests are filesystem artifacts under the
 managed workspace's `System/DatabaseBackups` directory, not SQLite rows. Schema
 migration v27 permanently removes the legacy `asset_text` table and its
 historical rows. The current schema contains no document-body cache.
+Migration v28 adds opt-in idle-scan scheduling fields to scan roots. Existing
+roots default to disabled, and scheduled scans reuse the normal local read-only
+scan pipeline without triggering uploads or other remote operations.
 
 Future semantic tables such as asset features, embeddings, relations, clusters, and inbox items should be added only when their owning feature is implemented. Do not infer that a table listed in an older design document already exists.
 

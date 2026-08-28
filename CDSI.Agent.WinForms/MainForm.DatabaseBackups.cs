@@ -136,6 +136,7 @@ public sealed partial class MainForm
         _scanCancellation?.Cancel();
         StopLocalVolumeMonitoring();
         _databaseBackupTimer.Stop();
+        _idleScanTimer.Stop();
 
         if (_databaseBackupFinalized || e.CloseReason != CloseReason.UserClosing)
         {

@@ -93,6 +93,9 @@ public sealed class OpenWebSettingsServiceTests
                 DROP TABLE restore_items;
                 DROP TABLE restore_jobs;
                 DROP TABLE openweb_sources;
+                ALTER TABLE scan_roots DROP COLUMN idle_scan_unit;
+                ALTER TABLE scan_roots DROP COLUMN idle_scan_interval;
+                ALTER TABLE scan_roots DROP COLUMN idle_scan_enabled;
                 ALTER TABLE scan_roots DROP COLUMN file_type_filters_json;
                 DELETE FROM schema_migrations WHERE version >= 16;
                 INSERT INTO agent_settings(setting_key, setting_value, updated_at)

@@ -2,6 +2,7 @@ using CDSI.Agent.WinForms;
 using CDSI.Agent.Application.Storage;
 using CDSI.Agent.Core.Assets;
 using CDSI.Agent.Core.Duplicates;
+using CDSI.Agent.Core.Scanning;
 using CDSI.Agent.Core.Storage;
 
 namespace CDSI.Agent.WinForms.Tests;
@@ -163,6 +164,55 @@ public sealed class MainFormLayoutTests
         Assert.Equal(
             expected,
             MainForm.ShouldAllowTaskCancellation(busy, allowCancel));
+    }
+
+    [Fact]
+    public void GetDueIdleScanRoots_UsesTheLaterScanOrConfigurationTime()
+    {
+        var now = DateTimeOffset.Parse("2026-08-28T12:00:00+08:00");
+        var due = CreateIdleScanRoot(
+            now.AddMinutes(-20),
+            now.AddMinutes(-15));
+        var recentlyConfigured = CreateIdleScanRoot(
+            now.AddMinutes(-20),
+            now.AddMinutes(-5));
+        var offline = CreateIdleScanRoot(
+            now.AddMinutes(-20),
+            now.AddMinutes(-15)) with
+        {
+            Status = ScanRootStatus.Offline
+        };
+        var scheduleDisabled = CreateIdleScanRoot(
+            now.AddMinutes(-20),
+            now.AddMinutes(-15)) with
+        {
+            IdleSchedule = IdleScanSchedule.Disabled
+        };
+
+        var result = MainForm.GetDueIdleScanRoots(
+            [due, recentlyConfigured, offline, scheduleDisabled],
+            now);
+
+        Assert.Equal(due.Id, Assert.Single(result).Id);
+    }
+
+    [Theory]
+    [InlineData(false, false, false, true)]
+    [InlineData(true, false, false, false)]
+    [InlineData(false, true, false, false)]
+    [InlineData(false, false, true, false)]
+    public void CanStartIdleScan_RequiresAnIdleApplication(
+        bool isBusy,
+        bool checkInProgress,
+        bool hasOpenModalWindow,
+        bool expected)
+    {
+        Assert.Equal(
+            expected,
+            MainForm.CanStartIdleScan(
+                isBusy,
+                checkInProgress,
+                hasOpenModalWindow));
     }
 
     [Fact]
@@ -1423,6 +1473,26 @@ public sealed class MainFormLayoutTests
 
         Assert.Equal(Path.GetFullPath(directoryPath), startInfo.FileName);
         Assert.True(startInfo.UseShellExecute);
+    }
+
+    private static ScanRoot CreateIdleScanRoot(
+        DateTimeOffset lastScannedAt,
+        DateTimeOffset updatedAt)
+    {
+        return new ScanRoot(
+            Guid.NewGuid(),
+            Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N")),
+            ScanRootMode.Readonly,
+            true,
+            ScanRootStatus.Active,
+            updatedAt.AddDays(-1),
+            updatedAt,
+            lastScannedAt,
+            null,
+            IdleSchedule: new IdleScanSchedule(
+                true,
+                10,
+                IdleScanIntervalUnit.Minutes));
     }
 
     private static IEnumerable<Control> Descendants(Control parent)

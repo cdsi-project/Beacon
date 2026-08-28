@@ -16,12 +16,16 @@ public sealed record ScanRoot(
     string? VolumeRelativePath = null,
     AssetFileTypeFilter FileTypeFilter = AssetFileTypeFilter.All,
     IReadOnlyList<string>? ExtensionWhitelist = null,
-    IReadOnlyList<AssetFileTypeFilter>? FileTypeFilters = null)
+    IReadOnlyList<AssetFileTypeFilter>? FileTypeFilters = null,
+    IdleScanSchedule? IdleSchedule = null)
 {
     public ScanFileFilter CreateFileFilter() =>
         FileTypeFilters is null
             ? new ScanFileFilter(FileTypeFilter, ExtensionWhitelist)
             : new ScanFileFilter(FileTypeFilters, ExtensionWhitelist);
+
+    public IdleScanSchedule GetIdleScanSchedule() =>
+        IdleSchedule ?? IdleScanSchedule.Disabled;
 }
 
 public enum ScanRootMode

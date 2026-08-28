@@ -17,6 +17,7 @@ public sealed partial class SettingsForm : Form
     private readonly TextBox _workspacePathTextBox = new();
     private readonly DataGridView _rootsGrid = new();
     private readonly ContextMenuStrip _rootContextMenu = new();
+    private readonly ToolStripMenuItem _editRootMenuItem = new();
     private readonly ToolStripMenuItem _toggleRootMenuItem = new();
     private readonly ToolStripMenuItem _removeRootMenuItem = new();
     private readonly Label _workspaceStatusLabel = new();
@@ -324,31 +325,43 @@ public sealed partial class SettingsForm : Form
         {
             HeaderText = "目录",
             AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill,
-            MinimumWidth = 320,
+            MinimumWidth = 280,
             FillWeight = 100
         });
         _rootsGrid.Columns.Add(new DataGridViewTextBoxColumn
         {
             HeaderText = "扫描策略",
-            Width = 160
+            Width = 140
+        });
+        _rootsGrid.Columns.Add(new DataGridViewTextBoxColumn
+        {
+            HeaderText = "空闲扫描",
+            Width = 120
         });
         _rootsGrid.Columns.Add(new DataGridViewTextBoxColumn
         {
             HeaderText = "状态",
-            Width = 90
+            Width = 80
         });
         _rootsGrid.Columns.Add(new DataGridViewTextBoxColumn
         {
             HeaderText = "最近扫描",
-            Width = 150
+            Width = 135
         });
+        _editRootMenuItem.Text = "编辑扫描设置";
+        _editRootMenuItem.Click += EditRootMenuItem_Click;
         _toggleRootMenuItem.Text = "停用";
         _toggleRootMenuItem.Click += ToggleRootMenuItem_Click;
         _removeRootMenuItem.Text = "移除";
         _removeRootMenuItem.ForeColor = Color.FromArgb(137, 49, 49);
         _removeRootMenuItem.Click += RemoveRootMenuItem_Click;
         _rootContextMenu.Items.AddRange(
-            [_toggleRootMenuItem, new ToolStripSeparator(), _removeRootMenuItem]);
+        [
+            _editRootMenuItem,
+            _toggleRootMenuItem,
+            new ToolStripSeparator(),
+            _removeRootMenuItem
+        ]);
         _rootContextMenu.Opening += (_, args) =>
         {
             if (_rootsGrid.CurrentRow?.Tag is not ScanRoot root)
@@ -370,6 +383,7 @@ public sealed partial class SettingsForm : Form
                     _rootsGrid.Rows[args.RowIndex].Cells[args.ColumnIndex];
             }
         };
+        _rootsGrid.CellDoubleClick += RootsGrid_CellDoubleClick;
     }
 
     private async void SettingsForm_Shown(object? sender, EventArgs e)
@@ -413,6 +427,7 @@ public sealed partial class SettingsForm : Form
             var index = _rootsGrid.Rows.Add(
                 root.Path,
                 FormatFileFilter(root),
+                FormatIdleScanSchedule(root.GetIdleScanSchedule()),
                 FormatRootStatus(root),
                 root.LastScannedAt?.ToLocalTime().ToString("yyyy-MM-dd HH:mm") ?? "尚未扫描");
             _rootsGrid.Rows[index].Tag = root;
@@ -491,6 +506,9 @@ public sealed partial class SettingsForm : Form
                 dialog.SelectedPath,
                 dialog.FileTypeFilters,
                 dialog.ExtensionWhitelist);
+            await _scanRootService.SetIdleScanScheduleAsync(
+                result.Root.Id,
+                dialog.IdleScanSchedule);
             if (result.RequiresInitialScan)
             {
                 _initialScanRootIds.Add(result.Root.Id);
@@ -511,6 +529,56 @@ public sealed partial class SettingsForm : Form
         catch (Exception exception)
         {
             ShowError("无法添加扫描目录", exception);
+        }
+    }
+
+    private async void EditRootMenuItem_Click(object? sender, EventArgs e)
+    {
+        await EditSelectedRootAsync();
+    }
+
+    private async void RootsGrid_CellDoubleClick(
+        object? sender,
+        DataGridViewCellEventArgs e)
+    {
+        if (e.RowIndex >= 0)
+        {
+            await EditSelectedRootAsync();
+        }
+    }
+
+    private async Task EditSelectedRootAsync()
+    {
+        if (_rootsGrid.CurrentRow?.Tag is not ScanRoot root)
+        {
+            return;
+        }
+
+        using var dialog = new ScanRootDialog(
+            root.Path,
+            root.CreateFileFilter().FileTypeFilters,
+            root.CreateFileFilter().ExtensionWhitelist,
+            allowPathSelection: false,
+            idleScanSchedule: root.GetIdleScanSchedule());
+        if (dialog.ShowDialog(this) != DialogResult.OK)
+        {
+            return;
+        }
+
+        try
+        {
+            await _scanRootService.SetFileFilterAsync(
+                root.Id,
+                dialog.FileTypeFilters,
+                dialog.ExtensionWhitelist);
+            await _scanRootService.SetIdleScanScheduleAsync(
+                root.Id,
+                dialog.IdleScanSchedule);
+            await RefreshRootsAsync();
+        }
+        catch (Exception exception)
+        {
+            ShowError("无法更新扫描设置", exception);
         }
     }
 
@@ -611,6 +679,24 @@ public sealed partial class SettingsForm : Form
         }
 
         return string.Join("；", parts);
+    }
+
+    internal static string FormatIdleScanSchedule(IdleScanSchedule schedule)
+    {
+        ArgumentNullException.ThrowIfNull(schedule);
+        if (!schedule.Enabled)
+        {
+            return "关闭";
+        }
+
+        var unit = schedule.Unit switch
+        {
+            IdleScanIntervalUnit.Minutes => "分钟",
+            IdleScanIntervalUnit.Hours => "小时",
+            IdleScanIntervalUnit.Days => "天",
+            _ => throw new ArgumentOutOfRangeException(nameof(schedule))
+        };
+        return $"每 {schedule.Interval} {unit}";
     }
 
     private static string FormatRootStatus(ScanRoot root)

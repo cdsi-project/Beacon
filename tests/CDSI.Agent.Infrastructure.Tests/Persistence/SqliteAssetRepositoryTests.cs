@@ -876,7 +876,7 @@ public sealed class SqliteAssetRepositoryTests
             var legacyTextTableExists = Convert.ToInt32(
                 await legacyTextTableCommand.ExecuteScalarAsync()) != 0;
 
-            Assert.Equal(27, version);
+            Assert.Equal(28, version);
             Assert.Equal(23, tableCount);
             Assert.Equal(8, filterIndexCount);
             Assert.Equal(3, scanFilterColumnCount);
@@ -919,6 +919,9 @@ public sealed class SqliteAssetRepositoryTests
                 );
                 INSERT INTO asset_text(asset_id, plain_text)
                 VALUES($asset_id, 'legacy extracted body');
+                ALTER TABLE scan_roots DROP COLUMN idle_scan_unit;
+                ALTER TABLE scan_roots DROP COLUMN idle_scan_interval;
+                ALTER TABLE scan_roots DROP COLUMN idle_scan_enabled;
                 DELETE FROM schema_migrations WHERE version >= 27;
                 """;
             command.Parameters.AddWithValue("$asset_id", assetId.ToString("D"));
@@ -947,7 +950,7 @@ public sealed class SqliteAssetRepositoryTests
             command.Parameters.AddWithValue("$asset_id", assetId.ToString("D"));
             await using var reader = await command.ExecuteReaderAsync();
             Assert.True(await reader.ReadAsync());
-            Assert.Equal(27, reader.GetInt32(0));
+            Assert.Equal(28, reader.GetInt32(0));
             Assert.False(reader.GetBoolean(1));
             Assert.True(reader.GetBoolean(2));
         }

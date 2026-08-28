@@ -103,9 +103,9 @@ public sealed class ConfigurationFormLayoutTests
             item => Assert.Equal("设为默认", item.Text),
             item => Assert.IsType<ToolStripSeparator>(item),
             item => Assert.Equal("删除源站", item.Text));
-        Assert.Equal(4, rootsGrid.Columns.Count);
+        Assert.Equal(5, rootsGrid.Columns.Count);
         Assert.Equal(
-            ["目录", "扫描策略", "状态", "最近扫描"],
+            ["目录", "扫描策略", "空闲扫描", "状态", "最近扫描"],
             rootsGrid.Columns
                 .Cast<DataGridViewColumn>()
                 .Select(column => column.HeaderText)
@@ -120,11 +120,12 @@ public sealed class ConfigurationFormLayoutTests
             rootsGrid.ContextMenuStrip);
         Assert.Collection(
             rootContextMenu.Items.Cast<ToolStripItem>(),
+            item => Assert.Equal("编辑扫描设置", item.Text),
             item => Assert.Equal("停用", item.Text),
             item => Assert.IsType<ToolStripSeparator>(item),
             item => Assert.Equal("移除", item.Text));
         Assert.Equal(DataGridViewAutoSizeColumnMode.Fill, rootsGrid.Columns[0].AutoSizeMode);
-        Assert.True(rootsGrid.Columns[0].MinimumWidth >= 320);
+        Assert.True(rootsGrid.Columns[0].MinimumWidth >= 280);
         Assert.Equal(6, storageGrid.Columns.Count);
         Assert.Equal(
             ["提供商", "名称", "Endpoint", "Bucket", "地域", "凭据"],
@@ -200,13 +201,69 @@ public sealed class ConfigurationFormLayoutTests
         var whitelistInput = Descendants(dialog)
             .OfType<TextBox>()
             .Single(control => control.AccessibleName == "白名单扩展名输入");
+        var idleScanCheckBox = Descendants(dialog)
+            .OfType<CheckBox>()
+            .Single(control => control.AccessibleName == "空闲时扫描");
+        var idleScanIntervalInput = Descendants(dialog)
+            .OfType<NumericUpDown>()
+            .Single(control => control.AccessibleName == "空闲扫描间隔");
+        var idleScanUnitComboBox = Descendants(dialog)
+            .OfType<ComboBox>()
+            .Single(control => control.AccessibleName == "空闲扫描时间单位");
 
         Assert.Equal(6, strategyCheckBoxes.Length);
         Assert.Equal(ScanFileFilter.AllFileTypes, dialog.FileTypeFilters);
         Assert.All(strategyCheckBoxes.Take(5), checkBox => Assert.True(checkBox.Checked));
         Assert.False(dialog.IsWhitelistSelected);
         Assert.False(whitelistInput.Enabled);
+        Assert.False(idleScanCheckBox.Checked);
+        Assert.False(idleScanIntervalInput.Enabled);
+        Assert.False(idleScanUnitComboBox.Enabled);
+        Assert.Equal(IdleScanSchedule.Disabled, dialog.IdleScanSchedule);
         Assert.False(fileTypeLabel.Bounds.IntersectsWith(videoCheckBox.Bounds));
+    }
+
+    [Fact]
+    public void ScanRootDialog_AllowsAnIdleScanIntervalInDays()
+    {
+        using var dialog = new ScanRootDialog(
+            Path.GetTempPath(),
+            idleScanSchedule: new IdleScanSchedule(
+                true,
+                3,
+                IdleScanIntervalUnit.Days));
+        dialog.CreateControl();
+        var intervalInput = Descendants(dialog)
+            .OfType<NumericUpDown>()
+            .Single(control => control.AccessibleName == "空闲扫描间隔");
+        var unitComboBox = Descendants(dialog)
+            .OfType<ComboBox>()
+            .Single(control => control.AccessibleName == "空闲扫描时间单位");
+
+        Assert.True(intervalInput.Enabled);
+        Assert.Equal(3, intervalInput.Value);
+        Assert.True(unitComboBox.Enabled);
+        Assert.Equal("天", unitComboBox.Text);
+        Assert.Equal(
+            new IdleScanSchedule(true, 3, IdleScanIntervalUnit.Days),
+            dialog.IdleScanSchedule);
+    }
+
+    [Theory]
+    [InlineData(false, 1, IdleScanIntervalUnit.Hours, "关闭")]
+    [InlineData(true, 15, IdleScanIntervalUnit.Minutes, "每 15 分钟")]
+    [InlineData(true, 2, IdleScanIntervalUnit.Hours, "每 2 小时")]
+    [InlineData(true, 7, IdleScanIntervalUnit.Days, "每 7 天")]
+    public void FormatIdleScanSchedule_UsesAReadableSummary(
+        bool enabled,
+        int interval,
+        IdleScanIntervalUnit unit,
+        string expected)
+    {
+        Assert.Equal(
+            expected,
+            SettingsForm.FormatIdleScanSchedule(
+                new IdleScanSchedule(enabled, interval, unit)));
     }
 
     [Fact]

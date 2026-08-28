@@ -68,7 +68,7 @@ public sealed class SqliteGitProfileRepositoryTests
             await connection.OpenAsync();
             await using var command = connection.CreateCommand();
             command.CommandText = "SELECT MAX(version) FROM schema_migrations;";
-            Assert.Equal(27, Convert.ToInt32(await command.ExecuteScalarAsync()));
+            Assert.Equal(28, Convert.ToInt32(await command.ExecuteScalarAsync()));
         }
 
         SqliteConnection.ClearAllPools();

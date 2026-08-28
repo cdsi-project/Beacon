@@ -22,25 +22,30 @@ public sealed class ScanRootDialog : Form
     private readonly Button _addExtensionButton = new();
     private readonly Button _removeExtensionButton = new();
     private readonly TableLayoutPanel _whitelistEditor = new();
+    private readonly CheckBox _idleScanCheckBox = new();
+    private readonly NumericUpDown _idleScanIntervalInput = new();
+    private readonly ComboBox _idleScanUnitComboBox = new();
     private readonly bool _requireAvailablePath;
 
     public ScanRootDialog(
         string? path = null,
         IReadOnlyCollection<AssetFileTypeFilter>? fileTypeFilters = null,
         IReadOnlyCollection<string>? extensionWhitelist = null,
-        bool allowPathSelection = true)
+        bool allowPathSelection = true,
+        IdleScanSchedule? idleScanSchedule = null)
     {
         var effectiveFileTypes = fileTypeFilters ??
             (extensionWhitelist?.Count > 0
                 ? Array.Empty<AssetFileTypeFilter>()
                 : ScanFileFilter.AllFileTypes);
         var filter = new ScanFileFilter(effectiveFileTypes, extensionWhitelist);
+        var effectiveIdleSchedule = idleScanSchedule ?? IdleScanSchedule.Disabled;
         _requireAvailablePath = allowPathSelection;
 
         Text = allowPathSelection ? "添加扫描目录" : "设置扫描目录";
         StartPosition = FormStartPosition.CenterParent;
-        ClientSize = new Size(680, 400);
-        MinimumSize = new Size(600, 360);
+        ClientSize = new Size(680, 460);
+        MinimumSize = new Size(600, 420);
         ShowInTaskbar = false;
         Font = new Font("Segoe UI", 9F);
         AutoScaleMode = AutoScaleMode.Dpi;
@@ -49,7 +54,7 @@ public sealed class ScanRootDialog : Form
         {
             Dock = DockStyle.Fill,
             ColumnCount = 3,
-            RowCount = 6,
+            RowCount = 7,
             Padding = new Padding(20, 18, 20, 16)
         };
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
@@ -60,6 +65,7 @@ public sealed class ScanRootDialog : Form
         layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 50));
         layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));
         layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 44));
 
         var directoryLabel = CreateLabel("扫描目录");
@@ -169,6 +175,48 @@ public sealed class ScanRootDialog : Form
         layout.Controls.Add(_whitelistEditor, 0, 4);
         layout.SetColumnSpan(_whitelistEditor, 3);
 
+        var idleScanPanel = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            FlowDirection = FlowDirection.LeftToRight,
+            WrapContents = false,
+            Margin = Padding.Empty,
+            Padding = new Padding(0, 6, 0, 0)
+        };
+        _idleScanCheckBox.Text = "空闲时扫描";
+        _idleScanCheckBox.AutoSize = true;
+        _idleScanCheckBox.Checked = effectiveIdleSchedule.Enabled;
+        _idleScanCheckBox.Margin = new Padding(0, 8, 18, 0);
+        _idleScanCheckBox.AccessibleName = "空闲时扫描";
+        _idleScanCheckBox.CheckedChanged += (_, _) => UpdateIdleScanState();
+        idleScanPanel.Controls.Add(_idleScanCheckBox);
+
+        var intervalLabel = CreateLabel("每");
+        intervalLabel.AutoSize = true;
+        intervalLabel.Margin = new Padding(0, 9, 6, 0);
+        idleScanPanel.Controls.Add(intervalLabel);
+
+        _idleScanIntervalInput.Minimum = IdleScanSchedule.MinimumInterval;
+        _idleScanIntervalInput.Maximum = IdleScanSchedule.MaximumInterval;
+        _idleScanIntervalInput.Value = effectiveIdleSchedule.Interval;
+        _idleScanIntervalInput.Width = 76;
+        _idleScanIntervalInput.Margin = new Padding(0, 4, 8, 0);
+        _idleScanIntervalInput.AccessibleName = "空闲扫描间隔";
+        idleScanPanel.Controls.Add(_idleScanIntervalInput);
+
+        _idleScanUnitComboBox.DropDownStyle = ComboBoxStyle.DropDownList;
+        _idleScanUnitComboBox.Width = 88;
+        _idleScanUnitComboBox.Margin = new Padding(0, 4, 0, 0);
+        _idleScanUnitComboBox.AccessibleName = "空闲扫描时间单位";
+        _idleScanUnitComboBox.Items.AddRange(IdleScanUnitChoice.All);
+        _idleScanUnitComboBox.SelectedIndex = Array.FindIndex(
+            IdleScanUnitChoice.All,
+            choice => choice.Value == effectiveIdleSchedule.Unit);
+        idleScanPanel.Controls.Add(_idleScanUnitComboBox);
+
+        layout.Controls.Add(idleScanPanel, 0, 5);
+        layout.SetColumnSpan(idleScanPanel, 3);
+
         var confirmButton = CreateButton(
             allowPathSelection ? "添加目录" : "保存",
             Color.FromArgb(24, 121, 78),
@@ -192,13 +240,14 @@ public sealed class ScanRootDialog : Form
         };
         commands.Controls.Add(confirmButton);
         commands.Controls.Add(cancelButton);
-        layout.Controls.Add(commands, 0, 5);
+        layout.Controls.Add(commands, 0, 6);
         layout.SetColumnSpan(commands, 3);
 
         Controls.Add(layout);
         AcceptButton = confirmButton;
         CancelButton = cancelButton;
         UpdateWhitelistState();
+        UpdateIdleScanState();
     }
 
     public string SelectedPath => Path.GetFullPath(_pathTextBox.Text.Trim());
@@ -208,6 +257,12 @@ public sealed class ScanRootDialog : Form
             .Where(choice => _fileTypeCheckBoxes[choice.Value].Checked)
             .Select(choice => choice.Value)
             .ToArray();
+
+    public IdleScanSchedule IdleScanSchedule => new(
+        _idleScanCheckBox.Checked,
+        decimal.ToInt32(_idleScanIntervalInput.Value),
+        (_idleScanUnitComboBox.SelectedItem as IdleScanUnitChoice)?.Value ??
+            IdleScanIntervalUnit.Hours);
 
     public IReadOnlyList<string> ExtensionWhitelist => IsWhitelistSelected
         ? _extensionListBox.Items.Cast<string>().ToArray()
@@ -347,6 +402,12 @@ public sealed class ScanRootDialog : Form
         _whitelistEditor.Enabled = IsWhitelistSelected;
     }
 
+    private void UpdateIdleScanState()
+    {
+        _idleScanIntervalInput.Enabled = _idleScanCheckBox.Checked;
+        _idleScanUnitComboBox.Enabled = _idleScanCheckBox.Checked;
+    }
+
     private static Label CreateLabel(string text)
     {
         return new Label
@@ -376,6 +437,20 @@ public sealed class ScanRootDialog : Form
         AssetFileTypeFilter Value,
         string Label)
     {
+        public override string ToString() => Label;
+    }
+
+    private sealed record IdleScanUnitChoice(
+        IdleScanIntervalUnit Value,
+        string Label)
+    {
+        public static IdleScanUnitChoice[] All { get; } =
+        [
+            new(IdleScanIntervalUnit.Minutes, "分钟"),
+            new(IdleScanIntervalUnit.Hours, "小时"),
+            new(IdleScanIntervalUnit.Days, "天")
+        ];
+
         public override string ToString() => Label;
     }
 }

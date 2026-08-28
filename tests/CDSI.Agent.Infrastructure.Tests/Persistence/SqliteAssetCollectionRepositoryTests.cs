@@ -47,6 +47,9 @@ public sealed class SqliteAssetCollectionRepositoryTests
                 UPDATE asset_collections
                 SET backup_profile_id = $profile_id
                 WHERE id = $collection_id;
+                ALTER TABLE scan_roots DROP COLUMN idle_scan_unit;
+                ALTER TABLE scan_roots DROP COLUMN idle_scan_interval;
+                ALTER TABLE scan_roots DROP COLUMN idle_scan_enabled;
                 DELETE FROM schema_migrations WHERE version >= 25;
                 """;
             command.Parameters.AddWithValue("$profile_id", profile.Id.ToString("D"));

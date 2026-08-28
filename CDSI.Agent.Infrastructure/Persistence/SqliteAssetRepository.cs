@@ -119,7 +119,8 @@ public sealed partial class SqliteAssetRepository : IAssetRepository
                 id, path, mode, enabled, status, created_at,
                 updated_at, last_scanned_at, removed_at,
                 volume_id, volume_relative_path, file_type_filter,
-                extension_whitelist_json, file_type_filters_json
+                extension_whitelist_json, file_type_filters_json,
+                idle_scan_enabled, idle_scan_interval, idle_scan_unit
             FROM scan_roots
             WHERE path_key = $path_key;
             """;

@@ -1061,6 +1061,33 @@ internal static class DatabaseMigrator
             await migrationCommand.ExecuteNonQueryAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
         }
+        if (currentVersion < 28)
+        {
+            await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+            await using var migrationCommand = connection.CreateCommand();
+            migrationCommand.Transaction = (SqliteTransaction)transaction;
+            migrationCommand.CommandText =
+                """
+                ALTER TABLE scan_roots
+                ADD COLUMN idle_scan_enabled INTEGER NOT NULL DEFAULT 0;
+
+                ALTER TABLE scan_roots
+                ADD COLUMN idle_scan_interval INTEGER NOT NULL DEFAULT 1
+                    CHECK (idle_scan_interval BETWEEN 1 AND 999);
+
+                ALTER TABLE scan_roots
+                ADD COLUMN idle_scan_unit TEXT NOT NULL DEFAULT 'Hours'
+                    CHECK (idle_scan_unit IN ('Minutes', 'Hours', 'Days'));
+
+                INSERT INTO schema_migrations(version, applied_at)
+                VALUES (28, $applied_at);
+                """;
+            migrationCommand.Parameters.AddWithValue(
+                "$applied_at",
+                DateTimeOffset.UtcNow.ToString("O"));
+            await migrationCommand.ExecuteNonQueryAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+        }
     }
 
     private static async Task<bool> TableExistsAsync(

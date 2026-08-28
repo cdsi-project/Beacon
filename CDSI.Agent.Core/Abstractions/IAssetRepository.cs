@@ -36,6 +36,12 @@ public interface IAssetRepository
         DateTimeOffset now,
         CancellationToken cancellationToken = default);
 
+    Task SetScanRootIdleScheduleAsync(
+        Guid scanRootId,
+        IdleScanSchedule schedule,
+        DateTimeOffset now,
+        CancellationToken cancellationToken = default);
+
     Task RemoveScanRootAsync(
         Guid scanRootId,
         DateTimeOffset now,

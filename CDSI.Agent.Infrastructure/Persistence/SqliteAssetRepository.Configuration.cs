@@ -21,7 +21,8 @@ public sealed partial class SqliteAssetRepository
                 id, path, mode, enabled, status, created_at,
                 updated_at, last_scanned_at, removed_at,
                 volume_id, volume_relative_path, file_type_filter,
-                extension_whitelist_json, file_type_filters_json
+                extension_whitelist_json, file_type_filters_json,
+                idle_scan_enabled, idle_scan_interval, idle_scan_unit
             FROM scan_roots
             WHERE $include_removed = 1 OR removed_at IS NULL
             ORDER BY mode DESC, path;
@@ -108,6 +109,32 @@ public sealed partial class SqliteAssetRepository
         command.Parameters.AddWithValue(
             "$file_type_filters_json",
             fileTypeFiltersJson);
+        command.Parameters.AddWithValue("$updated_at", now.ToString("O"));
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    public async Task SetScanRootIdleScheduleAsync(
+        Guid scanRootId,
+        IdleScanSchedule schedule,
+        DateTimeOffset now,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(schedule);
+        await using var connection = await OpenConnectionAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            UPDATE scan_roots
+            SET idle_scan_enabled = $enabled,
+                idle_scan_interval = $interval,
+                idle_scan_unit = $unit,
+                updated_at = $updated_at
+            WHERE id = $id AND removed_at IS NULL;
+            """;
+        command.Parameters.AddWithValue("$id", scanRootId.ToString("D"));
+        command.Parameters.AddWithValue("$enabled", schedule.Enabled ? 1 : 0);
+        command.Parameters.AddWithValue("$interval", schedule.Interval);
+        command.Parameters.AddWithValue("$unit", schedule.Unit.ToString());
         command.Parameters.AddWithValue("$updated_at", now.ToString("O"));
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
@@ -257,7 +284,11 @@ public sealed partial class SqliteAssetRepository
             reader.IsDBNull(10) ? null : reader.GetString(10),
             fileFilter.FileTypeFilter,
             fileFilter.ExtensionWhitelist,
-            fileFilter.FileTypeFilters);
+            fileFilter.FileTypeFilters,
+            new IdleScanSchedule(
+                reader.GetInt64(14) != 0,
+                reader.GetInt32(15),
+                Enum.Parse<IdleScanIntervalUnit>(reader.GetString(16))));
     }
 
     private static ManagedWorkspace ReadManagedWorkspace(SqliteDataReader reader)

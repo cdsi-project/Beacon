@@ -114,6 +114,7 @@ public sealed partial class MainForm : Form
 
         _databaseBackupTimer.Interval = (int)TimeSpan.FromHours(1).TotalMilliseconds;
         _databaseBackupTimer.Tick += DatabaseBackupTimer_Tick;
+        ConfigureIdleScanScheduler();
 
         Shown += MainForm_Shown;
         FormClosing += MainForm_FormClosing;
@@ -742,6 +743,7 @@ public sealed partial class MainForm : Form
 
             await TryCreateAutomaticDatabaseBackupAsync(workspace.Path);
             _databaseBackupTimer.Start();
+            _idleScanTimer.Start();
 
             var volumeResult = await _volumeReconciliationService.ReconcileAsync();
             EnableLocalVolumeMonitoring();
@@ -808,7 +810,8 @@ public sealed partial class MainForm : Form
     private async Task RunScanPipelineAsync(
         IReadOnlyCollection<Guid>? scanRootIds,
         bool isInitialScan,
-        FingerprintMode fingerprintMode)
+        FingerprintMode fingerprintMode,
+        bool isIdleScan = false)
     {
         var selectedRootIds = scanRootIds?.Distinct().ToArray();
         if (selectedRootIds is { Length: 0 })
@@ -825,7 +828,11 @@ public sealed partial class MainForm : Form
         SetBusy(true);
         _progressBar.Style = ProgressBarStyle.Marquee;
         _progressBar.MarqueeAnimationSpeed = 24;
-        _statusLabel.Text = isInitialScan ? "正在扫描新增目录" : "正在扫描";
+        _statusLabel.Text = isIdleScan
+            ? "正在执行空闲扫描"
+            : isInitialScan
+                ? "正在扫描新增目录"
+                : "正在扫描";
 
         try
         {
@@ -843,9 +850,11 @@ public sealed partial class MainForm : Form
             await RefreshAssetsAsync();
             if (scanSummary.Cancelled)
             {
-                _statusLabel.Text = isInitialScan
-                    ? "新增目录扫描已取消"
-                    : "扫描已取消";
+                _statusLabel.Text = isIdleScan
+                    ? "空闲扫描已取消"
+                    : isInitialScan
+                        ? "新增目录扫描已取消"
+                        : "扫描已取消";
                 return;
             }
 
@@ -888,9 +897,11 @@ public sealed partial class MainForm : Form
                 _scanCancellation.Token);
 
             await RefreshAssetsAsync();
-            var completedText = isInitialScan
-                ? "新增目录扫描完成"
-                : "扫描完成";
+            var completedText = isIdleScan
+                ? "空闲扫描完成"
+                : isInitialScan
+                    ? "新增目录扫描完成"
+                    : "扫描完成";
             _statusLabel.Text = fingerprintSummary.Cancelled
                 ? $"哈希已取消，已完成 {fingerprintSummary.FingerprintedFiles:N0} 个文件"
                 : $"{completedText}，目录 {scanSummary.RootsScanned:N0}/{scanSummary.RootsConfigured:N0}，已索引 {scanSummary.FilesIndexed:N0} 个文件，元数据 {metadataSummary.ExtractedFiles:N0}，哈希 {fingerprintSummary.FingerprintedFiles:N0}";
@@ -902,7 +913,14 @@ public sealed partial class MainForm : Form
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
             _statusLabel.Text = "扫描失败";
-            ShowError("扫描未能完成", exception);
+            if (isIdleScan)
+            {
+                _runtimeLog.WriteError("空闲扫描未能完成", exception);
+            }
+            else
+            {
+                ShowError("扫描未能完成", exception);
+            }
         }
         finally
         {

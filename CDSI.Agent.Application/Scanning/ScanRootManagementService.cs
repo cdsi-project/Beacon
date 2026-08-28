@@ -190,6 +190,20 @@ public sealed class ScanRootManagementService
             cancellationToken);
     }
 
+    public async Task SetIdleScanScheduleAsync(
+        Guid scanRootId,
+        IdleScanSchedule schedule,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(schedule);
+        await EnsureExternalRootAsync(scanRootId, cancellationToken);
+        await _repository.SetScanRootIdleScheduleAsync(
+            scanRootId,
+            schedule,
+            DateTimeOffset.UtcNow,
+            cancellationToken);
+    }
+
     public async Task RemoveAsync(
         Guid scanRootId,
         CancellationToken cancellationToken = default)

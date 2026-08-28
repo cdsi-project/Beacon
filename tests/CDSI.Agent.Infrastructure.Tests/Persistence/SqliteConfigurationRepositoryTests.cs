@@ -51,6 +51,7 @@ public sealed class SqliteConfigurationRepositoryTests
             now);
         Assert.Equal(AssetFileTypeFilter.All, created.FileTypeFilter);
         Assert.Equal(ScanFileFilter.AllFileTypes, created.FileTypeFilters);
+        Assert.Equal(IdleScanSchedule.Disabled, created.GetIdleScanSchedule());
         await repository.MarkScanRootCompletedAsync(
             created.Id,
             now.AddSeconds(15));
@@ -61,6 +62,15 @@ public sealed class SqliteConfigurationRepositoryTests
                 ["PSD"]),
             now.AddSeconds(30));
         var changedFilter = Assert.Single(await repository.ListScanRootsAsync());
+        var idleSchedule = new IdleScanSchedule(
+            true,
+            45,
+            IdleScanIntervalUnit.Minutes);
+        await repository.SetScanRootIdleScheduleAsync(
+            created.Id,
+            idleSchedule,
+            now.AddSeconds(45));
+        var scheduled = Assert.Single(await repository.ListScanRootsAsync());
         await repository.SetScanRootEnabledAsync(
             created.Id,
             enabled: false,
@@ -79,6 +89,7 @@ public sealed class SqliteConfigurationRepositoryTests
             [AssetFileTypeFilter.Video, AssetFileTypeFilter.Image],
             changedFilter.FileTypeFilters);
         Assert.Equal([".psd"], changedFilter.ExtensionWhitelist);
+        Assert.Equal(idleSchedule, scheduled.GetIdleScanSchedule());
         Assert.Null(changedFilter.LastScannedAt);
         Assert.False(disabled.Enabled);
         Assert.Equal(ScanRootStatus.Disabled, disabled.Status);
@@ -92,6 +103,7 @@ public sealed class SqliteConfigurationRepositoryTests
             [AssetFileTypeFilter.Video, AssetFileTypeFilter.Image],
             reactivated.FileTypeFilters);
         Assert.Equal([".psd"], reactivated.ExtensionWhitelist);
+        Assert.Equal(idleSchedule, reactivated.GetIdleScanSchedule());
         Assert.Null(reactivated.RemovedAt);
 
         SqliteConnection.ClearAllPools();
