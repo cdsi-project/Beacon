@@ -787,7 +787,7 @@ public sealed class SqliteAssetRepositoryTests
                 SELECT COUNT(*)
                 FROM sqlite_master
                 WHERE type = 'table' AND name IN (
-                    'asset_metadata', 'asset_text', 'managed_workspaces',
+                    'asset_metadata', 'managed_workspaces',
                     'storage_profiles', 'file_operations',
                     'file_operation_items', 'object_storage_locations',
                     'upload_jobs', 'upload_items',
@@ -865,12 +865,91 @@ public sealed class SqliteAssetRepositoryTests
             var locationVisibilityColumnCount = Convert.ToInt32(
                 await locationVisibilityColumnCommand.ExecuteScalarAsync());
 
-            Assert.Equal(26, version);
-            Assert.Equal(24, tableCount);
+            await using var legacyTextTableCommand = connection.CreateCommand();
+            legacyTextTableCommand.CommandText =
+                """
+                SELECT EXISTS(
+                    SELECT 1
+                    FROM sqlite_master
+                    WHERE type = 'table' AND name = 'asset_text');
+                """;
+            var legacyTextTableExists = Convert.ToInt32(
+                await legacyTextTableCommand.ExecuteScalarAsync()) != 0;
+
+            Assert.Equal(27, version);
+            Assert.Equal(23, tableCount);
             Assert.Equal(8, filterIndexCount);
             Assert.Equal(3, scanFilterColumnCount);
             Assert.Equal(2, assetVisibilityColumnCount);
             Assert.Equal(2, locationVisibilityColumnCount);
+            Assert.False(legacyTextTableExists);
+        }
+
+        SqliteConnection.ClearAllPools();
+    }
+
+    [Fact]
+    public async Task Version26Database_RemovesLegacyAssetTextTableAndItsRows()
+    {
+        using var directory = new TestDirectory();
+        var databasePath = Path.Combine(directory.Path, "cdsi.db");
+        var connectionString = new SqliteConnectionStringBuilder
+        {
+            DataSource = databasePath,
+            Pooling = false
+        }.ToString();
+        var repository = new SqliteAssetRepository(databasePath);
+        await repository.InitializeAsync();
+        var deviceId = await repository.GetOrCreateDeviceIdAsync();
+        var registered = await repository.RegisterLocalFilesAsync(
+            deviceId,
+            [CreateFile(Path.Combine(directory.Path, "legacy.md"), "legacy.md")],
+            DateTimeOffset.UtcNow);
+        var assetId = Assert.Single(registered).AssetId;
+
+        await using (var connection = new SqliteConnection(connectionString))
+        {
+            await connection.OpenAsync();
+            await using var command = connection.CreateCommand();
+            command.CommandText =
+                """
+                CREATE TABLE asset_text (
+                    asset_id TEXT NOT NULL PRIMARY KEY,
+                    plain_text TEXT NULL
+                );
+                INSERT INTO asset_text(asset_id, plain_text)
+                VALUES($asset_id, 'legacy extracted body');
+                DELETE FROM schema_migrations WHERE version >= 27;
+                """;
+            command.Parameters.AddWithValue("$asset_id", assetId.ToString("D"));
+            await command.ExecuteNonQueryAsync();
+        }
+
+        await repository.InitializeAsync();
+
+        await using (var connection = new SqliteConnection(connectionString))
+        {
+            await connection.OpenAsync();
+            await using var command = connection.CreateCommand();
+            command.CommandText =
+                """
+                SELECT
+                    (SELECT MAX(version) FROM schema_migrations),
+                    EXISTS(
+                        SELECT 1
+                        FROM sqlite_master
+                        WHERE type = 'table' AND name = 'asset_text'),
+                    EXISTS(
+                        SELECT 1
+                        FROM assets
+                        WHERE id = $asset_id);
+                """;
+            command.Parameters.AddWithValue("$asset_id", assetId.ToString("D"));
+            await using var reader = await command.ExecuteReaderAsync();
+            Assert.True(await reader.ReadAsync());
+            Assert.Equal(27, reader.GetInt32(0));
+            Assert.False(reader.GetBoolean(1));
+            Assert.True(reader.GetBoolean(2));
         }
 
         SqliteConnection.ClearAllPools();

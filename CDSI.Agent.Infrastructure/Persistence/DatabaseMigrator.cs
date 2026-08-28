@@ -145,26 +145,6 @@ internal static class DatabaseMigrator
             migrationCommand.Transaction = (SqliteTransaction)transaction;
             migrationCommand.CommandText =
                 """
-                CREATE TABLE asset_text (
-                    asset_id TEXT NOT NULL PRIMARY KEY,
-                    extractor_name TEXT NOT NULL,
-                    pipeline_version INTEGER NOT NULL,
-                    status TEXT NOT NULL,
-                    source_size INTEGER NOT NULL,
-                    source_modified_at TEXT NOT NULL,
-                    title TEXT NULL,
-                    plain_text TEXT NULL,
-                    headings_json TEXT NULL,
-                    encoding_name TEXT NULL,
-                    is_truncated INTEGER NULL,
-                    error_message TEXT NULL,
-                    extracted_at TEXT NOT NULL,
-                    FOREIGN KEY (asset_id) REFERENCES assets(id) ON DELETE CASCADE
-                );
-
-                CREATE INDEX ix_asset_text_status
-                ON asset_text(status);
-
                 INSERT INTO schema_migrations(version, applied_at)
                 VALUES (3, $applied_at);
                 """;
@@ -1056,6 +1036,24 @@ internal static class DatabaseMigrator
 
                 INSERT INTO schema_migrations(version, applied_at)
                 VALUES (26, $applied_at);
+                """;
+            migrationCommand.Parameters.AddWithValue(
+                "$applied_at",
+                DateTimeOffset.UtcNow.ToString("O"));
+            await migrationCommand.ExecuteNonQueryAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+        }
+        if (currentVersion < 27)
+        {
+            await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+            await using var migrationCommand = connection.CreateCommand();
+            migrationCommand.Transaction = (SqliteTransaction)transaction;
+            migrationCommand.CommandText =
+                """
+                DROP TABLE IF EXISTS asset_text;
+
+                INSERT INTO schema_migrations(version, applied_at)
+                VALUES (27, $applied_at);
                 """;
             migrationCommand.Parameters.AddWithValue(
                 "$applied_at",

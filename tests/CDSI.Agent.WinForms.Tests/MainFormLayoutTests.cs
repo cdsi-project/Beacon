@@ -115,7 +115,7 @@ public sealed class MainFormLayoutTests
     [Fact]
     public void CreateMainBanner_GrowsWhenDisplayScaledTextNeedsMoreHeight()
     {
-        using var banner = MainForm.CreateMainBanner("0.205");
+        using var banner = MainForm.CreateMainBanner("0.206");
         banner.Size = new Size(900, 1);
         banner.CreateControl();
         banner.PerformLayout();

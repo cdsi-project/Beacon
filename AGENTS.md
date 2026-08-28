@@ -10,7 +10,7 @@ It runs on the creator's own device and is responsible for discovering, indexing
 
 The agent must be designed as a **local-first, privacy-conscious, non-destructive system**.
 
-In the target architecture, CDSI Server is the optional control plane, CDSI Beacon is the local execution plane, and cloud storage such as Aliyun OSS, AWS S3, Cloudflare R2, Tencent COS, MinIO, NAS, or local filesystem is the data/storage plane. The current v0.205 application operates without CDSI Server.
+In the target architecture, CDSI Server is the optional control plane, CDSI Beacon is the local execution plane, and cloud storage such as Aliyun OSS, AWS S3, Cloudflare R2, Tencent COS, MinIO, NAS, or local filesystem is the data/storage plane. The current v0.206 application operates without CDSI Server.
 
 ---
 
@@ -43,9 +43,9 @@ The agent should help answer questions such as:
 - Which files are likely source assets, drafts, finals, covers, subtitles, references, or derivatives?
 - Which assets are related even if they are stored in different folders?
 
-### 1.1 Current Repository Baseline (v0.205)
+### 1.1 Current Repository Baseline (v0.206)
 
-The current baseline is v0.205, a working Windows desktop application built with .NET 10, WinForms, and SQLite. Before planning or implementing a change, distinguish these implemented capabilities from future requirements:
+The current baseline is v0.206, a working Windows desktop application built with .NET 10, WinForms, and SQLite. Before planning or implementing a change, distinguish these implemented capabilities from future requirements:
 
 - local workspace and multiple read-only scan roots
 - stable local Asset IDs and local Project IDs
@@ -591,7 +591,7 @@ If a specialized extractor fails, the generic asset record should still survive.
 
 ## 14. Text Extraction
 
-Current behavior intentionally does not extract, cache, display, or search document body text. The legacy `asset_text` table may remain for non-destructive database compatibility, but current code must not depend on it.
+Current behavior intentionally does not extract, cache, display, or search document body text. Schema migration v27 permanently drops the legacy `asset_text` table and its rows; new databases do not create it, and no compatibility path remains.
 
 Markdown and TXT contents are read only when the user explicitly publishes a selected article to OpenWeb; Beacon converts user-oriented Markdown and Front Matter to the WordPress REST representation internally.
 
@@ -1045,9 +1045,9 @@ OpenWeb publications, Git profiles, latest Git project sync records, and applica
 
 The current schema uses `asset_collections` as the persisted project model.
 Database snapshots and their JSON manifests are filesystem artifacts under the
-managed workspace's `System/DatabaseBackups` directory, not SQLite rows. The
-legacy `asset_text` table remains only for backward-compatible, non-destructive
-migration behavior.
+managed workspace's `System/DatabaseBackups` directory, not SQLite rows. Schema
+migration v27 permanently removes the legacy `asset_text` table and its
+historical rows. The current schema contains no document-body cache.
 
 Future semantic tables such as asset features, embeddings, relations, clusters, and inbox items should be added only when their owning feature is implemented. Do not infer that a table listed in an older design document already exists.
 
