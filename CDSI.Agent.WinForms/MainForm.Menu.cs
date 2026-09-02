@@ -97,7 +97,8 @@ public sealed partial class MainForm
                 CreateTabMenuItem("项目管理", _collectionsTabPage, Keys.Control | Keys.D4),
                 CreateTabMenuItem("云备份管理", _cloudBackupsTabPage, Keys.Control | Keys.D5),
                 CreateTabMenuItem("Git项目管理", _gitProjectsTabPage, Keys.Control | Keys.D6),
-                CreateTabMenuItem("统计", _statisticsTabPage, Keys.Control | Keys.D7),
+                CreateTabMenuItem("RSS订阅", _readerTabPage, Keys.Control | Keys.D7),
+                CreateTabMenuItem("统计", _statisticsTabPage, Keys.Control | Keys.D8),
                 new ToolStripSeparator(),
                 CreateMenuItem("重置资产列表列宽", (_, _) =>
                     ResetGridColumnWidths(_assetGrid))

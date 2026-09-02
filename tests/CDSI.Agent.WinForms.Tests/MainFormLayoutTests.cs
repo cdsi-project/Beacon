@@ -58,6 +58,7 @@ public sealed class MainFormLayoutTests
             new("项目管理"),
             new("云备份管理"),
             new("Git项目管理"),
+            new("RSS订阅"),
             new("统计")
         ];
 
@@ -71,11 +72,28 @@ public sealed class MainFormLayoutTests
                 "项目管理",
                 "云备份管理",
                 "Git项目管理",
+                "RSS订阅",
                 "统计"
             ],
             tabControl.TabPages.Cast<TabPage>().Select(page => page.Text));
         Assert.Equal(DockStyle.Fill, tabControl.Dock);
         Assert.Equal(new Point(12, 5), tabControl.Padding);
+    }
+
+    [Fact]
+    public void ConfigureReaderEntryGrid_UsesStableResizableColumns()
+    {
+        using var grid = new DataGridView();
+
+        MainForm.ConfigureReaderEntryGrid(grid);
+
+        Assert.Equal(
+            ["状态", "收藏", "标题", "来源", "时间"],
+            grid.Columns.Cast<DataGridViewColumn>().Select(column => column.HeaderText));
+        Assert.True(grid.AllowUserToResizeColumns);
+        Assert.False(grid.AllowUserToAddRows);
+        Assert.Equal(DataGridViewSelectionMode.FullRowSelect, grid.SelectionMode);
+        Assert.Equal("RSS 条目列表", grid.AccessibleName);
     }
 
     [Fact]
@@ -213,6 +231,41 @@ public sealed class MainFormLayoutTests
                 isBusy,
                 checkInProgress,
                 hasOpenModalWindow));
+    }
+
+    [Fact]
+    public void IdleScanModalBlocking_AllowsTheTaskCenterOnly()
+    {
+        var snapshot = new TaskCenterSnapshot(
+            "暂无任务",
+            string.Empty,
+            string.Empty,
+            null,
+            true,
+            false,
+            "数据目录: test");
+        using var taskCenter = new TaskCenterForm(() => snapshot, () => { });
+        using var settingsDialog = new Form();
+
+        Assert.False(MainForm.IsIdleScanBlockingModal(taskCenter));
+        Assert.True(MainForm.IsIdleScanBlockingModal(settingsDialog));
+    }
+
+    [Theory]
+    [InlineData(true, false, "正在扫描", "空闲扫描 · 正在扫描")]
+    [InlineData(true, false, "正在提取元数据", "空闲扫描 · 正在提取元数据")]
+    [InlineData(true, false, "正在检查重复候选", "空闲扫描 · 正在检查重复候选")]
+    [InlineData(false, true, "正在扫描", "新增目录扫描 · 正在扫描")]
+    [InlineData(false, false, "正在扫描", "扫描 · 正在扫描")]
+    public void FormatScanTaskStatus_KeepsTheTaskIdentityAcrossStages(
+        bool isIdleScan,
+        bool isInitialScan,
+        string phase,
+        string expected)
+    {
+        Assert.Equal(
+            expected,
+            MainForm.FormatScanTaskStatus(isIdleScan, isInitialScan, phase));
     }
 
     [Fact]
@@ -962,11 +1015,17 @@ public sealed class MainFormLayoutTests
 
         form.ApplySnapshot(initial with
         {
+            Status = "空闲扫描 · 正在提取元数据",
+            Progress = "元数据 4/10 · 已提取 4",
+            CurrentPath = @"D:\Assets\scheduled.mp4",
             ProgressPercent = null,
             IsIndeterminate = true,
             CanCancel = false
         });
 
+        Assert.Equal("空闲扫描 · 正在提取元数据", form.StatusText);
+        Assert.Equal("元数据 4/10 · 已提取 4", form.ProgressText);
+        Assert.Equal(@"D:\Assets\scheduled.mp4", form.CurrentPathText);
         Assert.False(form.CanCancel);
         Assert.Equal(ProgressBarStyle.Marquee, form.CurrentProgressStyle);
     }

@@ -4,6 +4,7 @@ using CDSI.Agent.Application.Collections;
 using CDSI.Agent.Application.Git;
 using CDSI.Agent.Application.Metadata;
 using CDSI.Agent.Application.OpenWeb;
+using CDSI.Agent.Application.Reader;
 using CDSI.Agent.Application.Fingerprints;
 using CDSI.Agent.Application.Scanning;
 using CDSI.Agent.Application.Storage;
@@ -36,6 +37,7 @@ public sealed partial class MainForm : Form
     private readonly FingerprintApplicationService _fingerprintService;
     private readonly MetadataExtractionApplicationService _metadataService;
     private readonly LocalDatabaseBackupService _localDatabaseBackupService;
+    private readonly LocalDatabaseBackupService _readerDatabaseBackupService;
     private readonly GiteeApplicationUpdateChecker _applicationUpdateChecker;
     private readonly string _clientId;
     private readonly System.Windows.Forms.Timer _databaseBackupTimer = new();
@@ -65,6 +67,7 @@ public sealed partial class MainForm : Form
         ScanApplicationService scanService,
         FingerprintApplicationService fingerprintService,
         MetadataExtractionApplicationService metadataService,
+        ReaderApplicationService readerService,
         WorkspaceApplicationService workspaceService,
         ScanRootManagementService scanRootService,
         LocalVolumeReconciliationService volumeReconciliationService,
@@ -80,6 +83,7 @@ public sealed partial class MainForm : Form
         AssetTagService assetTagService,
         ManagedAssetTransferService transferService,
         LocalDatabaseBackupService localDatabaseBackupService,
+        LocalDatabaseBackupService readerDatabaseBackupService,
         GiteeApplicationUpdateChecker applicationUpdateChecker,
         string clientId,
         string dataDirectory,
@@ -89,6 +93,7 @@ public sealed partial class MainForm : Form
         _scanService = scanService;
         _fingerprintService = fingerprintService;
         _metadataService = metadataService;
+        _readerService = readerService ?? throw new ArgumentNullException(nameof(readerService));
         _workspaceService = workspaceService;
         _scanRootService = scanRootService;
         _volumeReconciliationService = volumeReconciliationService;
@@ -104,6 +109,8 @@ public sealed partial class MainForm : Form
         _assetTagService = assetTagService;
         _transferService = transferService;
         _localDatabaseBackupService = localDatabaseBackupService;
+        _readerDatabaseBackupService = readerDatabaseBackupService ??
+            throw new ArgumentNullException(nameof(readerDatabaseBackupService));
         _applicationUpdateChecker = applicationUpdateChecker ??
             throw new ArgumentNullException(nameof(applicationUpdateChecker));
         _clientId = string.IsNullOrWhiteSpace(clientId)
@@ -183,6 +190,7 @@ public sealed partial class MainForm : Form
         ConfigureAssetCollectionTab();
         ConfigureCloudBackupManagementTab();
         ConfigureGitProjectManagementTab();
+        ConfigureReaderTab();
         ConfigureStatisticsTab();
         _assetGrid.SelectionChanged += AssetGrid_SelectionChanged;
 
@@ -211,6 +219,7 @@ public sealed partial class MainForm : Form
                 _collectionsTabPage,
                 _cloudBackupsTabPage,
                 _gitProjectsTabPage,
+                _readerTabPage,
                 _statisticsTabPage
             ]);
 
@@ -726,6 +735,7 @@ public sealed partial class MainForm : Form
         try
         {
             await _scanService.InitializeAsync();
+            await InitializeReaderAsync();
             var workspace = await _workspaceService.GetAsync();
             if (workspace is null)
             {
@@ -828,11 +838,14 @@ public sealed partial class MainForm : Form
         SetBusy(true);
         _progressBar.Style = ProgressBarStyle.Marquee;
         _progressBar.MarqueeAnimationSpeed = 24;
-        _statusLabel.Text = isIdleScan
-            ? "正在执行空闲扫描"
-            : isInitialScan
-                ? "正在扫描新增目录"
-                : "正在扫描";
+        _progressLabel.Text = selectedRootIds is null
+            ? "正在准备全部已启用目录"
+            : $"计划目录 {selectedRootIds.Length:N0} 个";
+        _currentPathLabel.Text = string.Empty;
+        _statusLabel.Text = FormatScanTaskStatus(
+            isIdleScan,
+            isInitialScan,
+            "正在扫描");
 
         try
         {
@@ -850,11 +863,10 @@ public sealed partial class MainForm : Form
             await RefreshAssetsAsync();
             if (scanSummary.Cancelled)
             {
-                _statusLabel.Text = isIdleScan
-                    ? "空闲扫描已取消"
-                    : isInitialScan
-                        ? "新增目录扫描已取消"
-                        : "扫描已取消";
+                _statusLabel.Text = FormatScanTaskStatus(
+                    isIdleScan,
+                    isInitialScan,
+                    "已取消");
                 return;
             }
 
@@ -863,7 +875,10 @@ public sealed partial class MainForm : Form
             _progressBar.Minimum = 0;
             _progressBar.Maximum = 1_000;
             _progressBar.Value = 0;
-            _statusLabel.Text = "正在提取元数据";
+            _statusLabel.Text = FormatScanTaskStatus(
+                isIdleScan,
+                isInitialScan,
+                "正在提取元数据");
 
             var metadataSummary = await Task.Run(
                 () => _metadataService.ProcessPendingAsync(
@@ -874,8 +889,10 @@ public sealed partial class MainForm : Form
             await RefreshAssetsAsync();
             if (metadataSummary.Cancelled)
             {
-                _statusLabel.Text =
-                    $"元数据提取已取消，已完成 {metadataSummary.ExtractedFiles:N0} 个文件";
+                _statusLabel.Text = FormatScanTaskStatus(
+                    isIdleScan,
+                    isInitialScan,
+                    $"元数据提取已取消，已完成 {metadataSummary.ExtractedFiles:N0} 个文件");
                 return;
             }
 
@@ -885,9 +902,12 @@ public sealed partial class MainForm : Form
             _progressBar.Minimum = 0;
             _progressBar.Maximum = 1_000;
             _progressBar.Value = 0;
-            _statusLabel.Text = mode == FingerprintMode.Complete
-                ? "正在进行完整校验"
-                : "正在检查重复候选";
+            _statusLabel.Text = FormatScanTaskStatus(
+                isIdleScan,
+                isInitialScan,
+                mode == FingerprintMode.Complete
+                    ? "正在进行完整校验"
+                    : "正在检查重复候选");
 
             var fingerprintSummary = await Task.Run(
                 () => _fingerprintService.ProcessPendingAsync(
@@ -897,22 +917,29 @@ public sealed partial class MainForm : Form
                 _scanCancellation.Token);
 
             await RefreshAssetsAsync();
-            var completedText = isIdleScan
-                ? "空闲扫描完成"
-                : isInitialScan
-                    ? "新增目录扫描完成"
-                    : "扫描完成";
             _statusLabel.Text = fingerprintSummary.Cancelled
-                ? $"哈希已取消，已完成 {fingerprintSummary.FingerprintedFiles:N0} 个文件"
-                : $"{completedText}，目录 {scanSummary.RootsScanned:N0}/{scanSummary.RootsConfigured:N0}，已索引 {scanSummary.FilesIndexed:N0} 个文件，元数据 {metadataSummary.ExtractedFiles:N0}，哈希 {fingerprintSummary.FingerprintedFiles:N0}";
+                ? FormatScanTaskStatus(
+                    isIdleScan,
+                    isInitialScan,
+                    $"哈希已取消，已完成 {fingerprintSummary.FingerprintedFiles:N0} 个文件")
+                : FormatScanTaskStatus(
+                    isIdleScan,
+                    isInitialScan,
+                    $"完成，目录 {scanSummary.RootsScanned:N0}/{scanSummary.RootsConfigured:N0}，已索引 {scanSummary.FilesIndexed:N0} 个文件，元数据 {metadataSummary.ExtractedFiles:N0}，哈希 {fingerprintSummary.FingerprintedFiles:N0}");
         }
         catch (OperationCanceledException)
         {
-            _statusLabel.Text = "操作已取消";
+            _statusLabel.Text = FormatScanTaskStatus(
+                isIdleScan,
+                isInitialScan,
+                "操作已取消");
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
-            _statusLabel.Text = "扫描失败";
+            _statusLabel.Text = FormatScanTaskStatus(
+                isIdleScan,
+                isInitialScan,
+                "失败");
             if (isIdleScan)
             {
                 _runtimeLog.WriteError("空闲扫描未能完成", exception);
@@ -928,6 +955,20 @@ public sealed partial class MainForm : Form
             _progressBar.Style = ProgressBarStyle.Blocks;
             SetBusy(false);
         }
+    }
+
+    internal static string FormatScanTaskStatus(
+        bool isIdleScan,
+        bool isInitialScan,
+        string phase)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(phase);
+        var taskName = isIdleScan
+            ? "空闲扫描"
+            : isInitialScan
+                ? "新增目录扫描"
+                : "扫描";
+        return $"{taskName} · {phase.Trim()}";
     }
 
     private void UpdateScanProgress(ScanProgress progress)
@@ -1160,6 +1201,11 @@ public sealed partial class MainForm : Form
         _cloudBackupSearchTextBox.Enabled = !busy;
         _searchCloudBackupsButton.Enabled = !busy;
         _refreshCloudBackupsButton.Enabled = !busy;
+        var readerEnabled = !busy && _readerInitialized;
+        _readerToolbar.Enabled = readerEnabled;
+        _readerSourceTree.Enabled = readerEnabled;
+        _readerEntryGrid.Enabled = readerEnabled;
+        _readerSearchTextBox.Enabled = readerEnabled;
         UpdateCollectionActionState();
         UpdateAssetDirectoryActionState();
         UpdateCloudBackupActionState();

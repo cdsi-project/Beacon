@@ -30,10 +30,18 @@ public sealed partial class MainForm
 
             var result = await _localDatabaseBackupService.CreateSnapshotAsync(
                 workspacePath);
+            var readerResult = await _readerDatabaseBackupService.CreateSnapshotAsync(
+                workspacePath);
             if (result.Created)
             {
                 _runtimeLog.WriteInformation(
                     $"已创建本地数据库快照：{result.SnapshotPath}");
+            }
+
+            if (readerResult.Created)
+            {
+                _runtimeLog.WriteInformation(
+                    $"已创建 Reader 数据库快照：{readerResult.SnapshotPath}");
             }
         }
         catch (Exception exception)
@@ -75,12 +83,17 @@ public sealed partial class MainForm
             var result = await _localDatabaseBackupService.CreateSnapshotAsync(
                 workspace.Path,
                 force: true);
+            var readerResult = await _readerDatabaseBackupService.CreateSnapshotAsync(
+                workspace.Path,
+                force: true);
             _runtimeLog.WriteInformation(
                 $"已手动创建本地数据库快照：{result.SnapshotPath}");
-            _statusLabel.Text = $"数据库已备份：{Path.GetFileName(result.SnapshotPath)}";
+            _runtimeLog.WriteInformation(
+                $"已手动创建 Reader 数据库快照：{readerResult.SnapshotPath}");
+            _statusLabel.Text = "资产与 Reader 数据库已备份";
             MessageBox.Show(
                 this,
-                $"数据库备份已完成。\n\n{result.SnapshotPath}",
+                $"数据库备份已完成。\n\n资产数据库：{result.SnapshotPath}\n\nReader 数据库：{readerResult.SnapshotPath}",
                 "CDSI Beacon",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Information);
@@ -157,10 +170,18 @@ public sealed partial class MainForm
             {
                 var result = await _localDatabaseBackupService.CreateSnapshotAsync(
                     workspace.Path);
+                var readerResult = await _readerDatabaseBackupService.CreateSnapshotAsync(
+                    workspace.Path);
                 if (result.Created)
                 {
                     _runtimeLog.WriteInformation(
                         $"退出前已创建本地数据库快照：{result.SnapshotPath}");
+                }
+
+                if (readerResult.Created)
+                {
+                    _runtimeLog.WriteInformation(
+                        $"退出前已创建 Reader 数据库快照：{readerResult.SnapshotPath}");
                 }
             }
         }

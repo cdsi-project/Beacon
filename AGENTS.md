@@ -10,7 +10,7 @@ It runs on the creator's own device and is responsible for discovering, indexing
 
 The agent must be designed as a **local-first, privacy-conscious, non-destructive system**.
 
-In the target architecture, CDSI Server is the optional control plane, CDSI Beacon is the local execution plane, and cloud storage such as Aliyun OSS, AWS S3, Cloudflare R2, Tencent COS, MinIO, NAS, or local filesystem is the data/storage plane. The current v0.2.13 application operates without CDSI Server.
+In the target architecture, CDSI Server is the optional control plane, CDSI Beacon is the local execution plane, and cloud storage such as Aliyun OSS, AWS S3, Cloudflare R2, Tencent COS, MinIO, NAS, or local filesystem is the data/storage plane. The current v0.2.16 application operates without CDSI Server.
 
 ---
 
@@ -43,12 +43,12 @@ The agent should help answer questions such as:
 - Which files are likely source assets, drafts, finals, covers, subtitles, references, or derivatives?
 - Which assets are related even if they are stored in different folders?
 
-### 1.1 Current Repository Baseline (v0.2.13)
+### 1.1 Current Repository Baseline (v0.2.16)
 
-The current baseline is v0.2.13, a working Windows desktop application built with .NET 10, WinForms, and SQLite. Before planning or implementing a change, distinguish these implemented capabilities from future requirements:
+The current baseline is v0.2.16, a working Windows desktop application built with .NET 10, WinForms, and SQLite. Before planning or implementing a change, distinguish these implemented capabilities from future requirements:
 
 - local workspace and multiple read-only scan roots
-- per-root opt-in idle scan schedules with minute, hour, or day intervals; due work is deferred while Beacon is busy or a modal window is open
+- per-root opt-in idle scan schedules with minute, hour, or day intervals; due work is deferred while Beacon is busy or a blocking modal window is open, while the Task Center remains available for live idle-scan progress and cancellation
 - stable local Asset IDs and local Project IDs
 - paged asset search, tags, duplicate detection, media metadata, and statistics
 - project creation, local name/type editing, membership, and project-bound cloud backup
@@ -63,10 +63,12 @@ The current baseline is v0.2.13, a working Windows desktop application built wit
 - single-instance Windows desktop behavior
 - a multi-resolution Beacon application icon embedded in the Windows executable
 - asynchronous update discovery from the public Gitee repository VERSION file, with a manual Help-menu command and no automatic download or execution
+- a local-first Reader tab for direct RSS 2.0, Atom, and JSON Feed subscriptions, manual conditional refresh, read/star state, folder navigation, local search, OPML subscription exchange, and complete JSON data export/import
+- an independent `%LOCALAPPDATA%\CDSI\reader.db` with consistent snapshots under the managed workspace's `System/DatabaseBackups/Reader` directory
 
-The current application does **not** connect to CDSI Server, use temporary server-issued credentials, run AI/embedding pipelines, extract document bodies in the background, or send telemetry. Startup update discovery performs a read-only request for Gitee's public `VERSION` file and sends no asset metadata, paths, configuration, credentials, or client ID. Saving a Git profile does not perform network activity; clone, commit, and push occur only after the user explicitly selects a project and repository and confirms synchronization.
+The current application does **not** connect to CDSI Server, use temporary server-issued credentials, run AI/embedding pipelines, extract document bodies in the background, or send telemetry. Startup update discovery performs a read-only request for Gitee's public `VERSION` file and sends no asset metadata, paths, configuration, credentials, or client ID. Reader requests go directly to a user-added source only while adding/importing a subscription or performing a manual refresh; there is no Reader scheduler yet. Saving a Git profile does not perform network activity; clone, commit, and push occur only after the user explicitly selects a project and repository and confirms synchronization.
 
-The cloud project model is transitional in v0.200: local projects have stable IDs, but remote objects still use `<project name>/<original filename>` and the cloud UI groups records by that prefix. Stable remote ProjectId manifests and cross-device project reconstruction are next-stage work, not existing behavior.
+The cloud project model is transitional in v0.2.16: local projects have stable IDs, but remote objects still use `<project name>/<original filename>` and the cloud UI groups records by that prefix. Stable remote ProjectId manifests and cross-device project reconstruction are next-stage work, not existing behavior.
 
 ---
 
@@ -594,7 +596,7 @@ If a specialized extractor fails, the generic asset record should still survive.
 
 ## 14. Text Extraction
 
-Current behavior intentionally does not extract, cache, display, or search document body text. Schema migration v27 permanently drops the legacy `asset_text` table and its rows; new databases do not create it, and no compatibility path remains.
+Current asset-scanning behavior intentionally does not extract, cache, display, or search local document body text. Schema migration v27 permanently drops the legacy `asset_text` table and its rows; new databases do not create it, and no compatibility path remains. Reader Feed content is a separate, explicitly subscribed external-data domain stored in `reader.db`; it must never be repurposed as a path for extracting local asset bodies.
 
 Markdown and TXT contents are read only when the user explicitly publishes a selected article to OpenWeb; Beacon converts user-oriented Markdown and Front Matter to the WordPress REST representation internally.
 
@@ -1040,20 +1042,30 @@ Do not claim an asset is safely backed up merely because an upload request succe
 A local embedded database is recommended. SQLite is acceptable unless a stronger requirement emerges.
 
 `CDSI.Agent.Infrastructure/Persistence/DatabaseMigrator.cs` is the authoritative
-schema definition. Do not duplicate a full table-name inventory in this guide;
-it will drift from migrations. The current persistence model covers workspaces,
+asset schema definition, and `CDSI.Agent.Infrastructure/Reader/ReaderDatabaseMigrator.cs`
+is the authoritative Reader schema definition. Do not duplicate a full table-name
+inventory in this guide; it will drift from migrations. The asset persistence model covers workspaces,
 volumes and scan roots, assets and locations, metadata, tags, projects and
 membership, storage profiles and remote locations, file/upload/restore audits,
 OpenWeb publications, Git profiles, latest Git project sync records, and application settings.
 
-The current schema uses `asset_collections` as the persisted project model.
-Database snapshots and their JSON manifests are filesystem artifacts under the
-managed workspace's `System/DatabaseBackups` directory, not SQLite rows. Schema
+The current schema uses `asset_collections` as the persisted project model. Reader
+subscriptions, Feed-provided plain-text content, read/star state, and bounded fetch
+logs live in the independent `%LOCALAPPDATA%\CDSI\reader.db`; they are not asset-text
+records. Database snapshots and their JSON manifests are filesystem artifacts under the
+managed workspace's `System/DatabaseBackups` directory; Reader snapshots use its
+`Reader` subdirectory. These snapshots are not SQLite rows. Schema
 migration v27 permanently removes the legacy `asset_text` table and its
 historical rows. The current schema contains no document-body cache.
 Migration v28 adds opt-in idle-scan scheduling fields to scan roots. Existing
 roots default to disabled, and scheduled scans reuse the normal local read-only
 scan pipeline without triggering uploads or other remote operations.
+
+Reader schema v1 stores normalized unique Feed URLs, one optional folder per Feed,
+stable per-Feed entry deduplication keys, source/state separation, conditional HTTP
+validators, bounded fetch logs, and an explicit private-network opt-in. Reader HTML
+must remain non-executable in the desktop UI; v0.2.16 renders only normalized plain
+text and does not load scripts, embedded resources, or remote images.
 
 Future semantic tables such as asset features, embeddings, relations, clusters, and inbox items should be added only when their owning feature is implemented. Do not infer that a table listed in an older design document already exists.
 

@@ -4,6 +4,7 @@ using CDSI.Agent.Application.Fingerprints;
 using CDSI.Agent.Application.Git;
 using CDSI.Agent.Application.Metadata;
 using CDSI.Agent.Application.OpenWeb;
+using CDSI.Agent.Application.Reader;
 using CDSI.Agent.Application.Scanning;
 using CDSI.Agent.Application.Storage;
 using CDSI.Agent.Application.Transfers;
@@ -17,6 +18,7 @@ using CDSI.Agent.Infrastructure.Identity;
 using CDSI.Agent.Infrastructure.Metadata;
 using CDSI.Agent.Infrastructure.OpenWeb;
 using CDSI.Agent.Infrastructure.Persistence;
+using CDSI.Agent.Infrastructure.Reader;
 using CDSI.Agent.Infrastructure.Security;
 using CDSI.Agent.Infrastructure.Storage;
 
@@ -52,9 +54,21 @@ static class Program
 
             var databasePath = Path.Combine(dataDirectory, "cdsi.db");
             var repository = new SqliteAssetRepository(databasePath);
+            var readerDatabasePath = Path.Combine(dataDirectory, "reader.db");
+            using var readerRepository = new SqliteReaderRepository(readerDatabasePath);
+            using var readerHttpClient = ReaderHttpFeedClient.CreateHttpClient(
+                MainForm.GetApplicationVersion());
+            var readerService = new ReaderApplicationService(
+                readerRepository,
+                new ReaderHttpFeedClient(readerHttpClient, new SyndicationFeedParser()),
+                new OpmlSubscriptionExchange());
             var localDatabaseBackupService = new LocalDatabaseBackupService(
                 databasePath,
                 MainForm.GetApplicationVersion());
+            var readerDatabaseBackupService = new LocalDatabaseBackupService(
+                readerDatabasePath,
+                MainForm.GetApplicationVersion(),
+                "Reader");
             var fingerprintEngine = new Sha256FileFingerprintService();
             var scanService = new ScanApplicationService(new FileSystemScanner(), repository);
             var workspaceProvisioner = new WorkspaceProvisioner();
@@ -137,6 +151,7 @@ static class Program
                 scanService,
                 fingerprintService,
                 metadataService,
+                readerService,
                 workspaceService,
                 scanRootService,
                 volumeReconciliationService,
@@ -152,6 +167,7 @@ static class Program
                 assetTagService,
                 transferService,
                 localDatabaseBackupService,
+                readerDatabaseBackupService,
                 applicationUpdateChecker,
                 clientIdentity.Value,
                 dataDirectory,

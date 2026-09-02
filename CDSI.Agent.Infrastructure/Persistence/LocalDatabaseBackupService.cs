@@ -15,23 +15,43 @@ public sealed class LocalDatabaseBackupService
 
     private readonly string _databasePath;
     private readonly string _applicationVersion;
+    private readonly string? _backupSubdirectory;
     private readonly SemaphoreSlim _backupLock = new(1, 1);
 
-    public LocalDatabaseBackupService(string databasePath, string applicationVersion)
+    public LocalDatabaseBackupService(
+        string databasePath,
+        string applicationVersion,
+        string? backupSubdirectory = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(databasePath);
         ArgumentException.ThrowIfNullOrWhiteSpace(applicationVersion);
         _databasePath = Path.GetFullPath(databasePath);
         _applicationVersion = applicationVersion.Trim();
+        if (!string.IsNullOrWhiteSpace(backupSubdirectory) &&
+            (backupSubdirectory.IndexOfAny(
+                [Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar]) >= 0 ||
+             backupSubdirectory is "." or ".."))
+        {
+            throw new ArgumentException(
+                "Backup subdirectory must be a single directory name.",
+                nameof(backupSubdirectory));
+        }
+
+        _backupSubdirectory = string.IsNullOrWhiteSpace(backupSubdirectory)
+            ? null
+            : backupSubdirectory.Trim();
     }
 
     public string GetBackupDirectory(string workspacePath)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(workspacePath);
-        return Path.Combine(
+        var root = Path.Combine(
             Path.GetFullPath(workspacePath),
             "System",
             "DatabaseBackups");
+        return _backupSubdirectory is null
+            ? root
+            : Path.Combine(root, _backupSubdirectory);
     }
 
     public async Task<LocalDatabaseBackupResult> CreateSnapshotAsync(

@@ -104,6 +104,8 @@ internal sealed class TaskCenterForm : Form
 
     internal string ProgressText => _progressValueLabel.Text;
 
+    internal string CurrentPathText => _pathValueLabel.Text;
+
     internal bool CanCancel => _cancelButton.Enabled;
 
     internal ProgressBarStyle CurrentProgressStyle => _progressBar.Style;

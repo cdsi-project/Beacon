@@ -24,7 +24,7 @@ public sealed partial class MainForm
         if (!CanStartIdleScan(
                 _isBusy,
                 _idleScanCheckInProgress,
-                HasOpenModalWindow()))
+                HasOpenIdleScanBlockingModalWindow()))
         {
             return;
         }
@@ -36,7 +36,7 @@ public sealed partial class MainForm
             if (!CanStartIdleScan(
                     _isBusy,
                     checkInProgress: false,
-                    hasOpenModalWindow: HasOpenModalWindow()))
+                    hasBlockingModalWindow: HasOpenIdleScanBlockingModalWindow()))
             {
                 return;
             }
@@ -85,9 +85,9 @@ public sealed partial class MainForm
     internal static bool CanStartIdleScan(
         bool isBusy,
         bool checkInProgress,
-        bool hasOpenModalWindow)
+        bool hasBlockingModalWindow)
     {
-        return !isBusy && !checkInProgress && !hasOpenModalWindow;
+        return !isBusy && !checkInProgress && !hasBlockingModalWindow;
     }
 
     private static DateTimeOffset GetIdleScanAnchor(ScanRoot root)
@@ -98,10 +98,19 @@ public sealed partial class MainForm
                 : root.UpdatedAt;
     }
 
-    private bool HasOpenModalWindow()
+    private bool HasOpenIdleScanBlockingModalWindow()
     {
         return System.Windows.Forms.Application.OpenForms
             .Cast<Form>()
-            .Any(form => !ReferenceEquals(form, this) && form.Modal);
+            .Any(form =>
+                !ReferenceEquals(form, this) &&
+                form.Modal &&
+                IsIdleScanBlockingModal(form));
+    }
+
+    internal static bool IsIdleScanBlockingModal(Form form)
+    {
+        ArgumentNullException.ThrowIfNull(form);
+        return form is not TaskCenterForm;
     }
 }
