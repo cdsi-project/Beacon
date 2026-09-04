@@ -76,15 +76,6 @@ public sealed class LocalDatabaseBackupService
             var sourceStamp = new SourceDatabaseStamp(
                 sourceInfo.Length,
                 sourceInfo.LastWriteTimeUtc);
-            var latest = ReadLatestManifest(backupDirectory);
-            if (!force && latest is not null && latest.Source == sourceStamp)
-            {
-                return new LocalDatabaseBackupResult(
-                    backupDirectory,
-                    latest.SnapshotPath,
-                    Created: false,
-                    latest.Manifest.CreatedAtUtc);
-            }
 
             var createdAtUtc = DateTimeOffset.UtcNow;
             var snapshotPath = CreateAvailableSnapshotPath(
@@ -108,6 +99,24 @@ public sealed class LocalDatabaseBackupService
                 var sha256 = await ComputeSha256Async(
                     temporarySnapshotPath,
                     cancellationToken);
+                if (!force)
+                {
+                    var latest = await ReadLatestValidSnapshotAsync(
+                        backupDirectory,
+                        cancellationToken);
+                    if (latest is not null && string.Equals(
+                            latest.Manifest.Sha256,
+                            sha256,
+                            StringComparison.OrdinalIgnoreCase))
+                    {
+                        return new LocalDatabaseBackupResult(
+                            backupDirectory,
+                            latest.SnapshotPath,
+                            Created: false,
+                            latest.Manifest.CreatedAtUtc);
+                    }
+                }
+
                 var manifest = new LocalDatabaseBackupManifest(
                     FormatVersion: 1,
                     CreatedAtUtc: createdAtUtc,
@@ -139,6 +148,59 @@ public sealed class LocalDatabaseBackupService
             {
                 TryDelete(temporarySnapshotPath);
                 TryDelete(temporaryManifestPath);
+            }
+        }
+        finally
+        {
+            _backupLock.Release();
+        }
+    }
+
+    internal async Task CreateVerifiedSnapshotFileAsync(
+        string destinationPath,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(destinationPath);
+        var destination = Path.GetFullPath(destinationPath);
+        if (string.Equals(
+                destination,
+                _databasePath,
+                OperatingSystem.IsWindows()
+                    ? StringComparison.OrdinalIgnoreCase
+                    : StringComparison.Ordinal))
+        {
+            throw new ArgumentException(
+                "Snapshot destination must differ from the source database.",
+                nameof(destinationPath));
+        }
+
+        await _backupLock.WaitAsync(cancellationToken);
+        try
+        {
+            if (!File.Exists(_databasePath))
+            {
+                throw new FileNotFoundException(
+                    "Beacon SQLite 数据库不存在。",
+                    _databasePath);
+            }
+
+            if (File.Exists(destination))
+            {
+                throw new IOException($"快照目标文件已存在：{destination}");
+            }
+
+            var directory = Path.GetDirectoryName(destination)
+                ?? throw new InvalidOperationException("快照路径没有父目录。");
+            Directory.CreateDirectory(directory);
+            try
+            {
+                await CreateConsistentCopyAsync(destination, cancellationToken);
+                await VerifySnapshotAsync(destination, cancellationToken);
+            }
+            catch
+            {
+                TryDelete(destination);
+                throw;
             }
         }
         finally
@@ -196,7 +258,7 @@ public sealed class LocalDatabaseBackupService
 
         await using (var quickCheck = connection.CreateCommand())
         {
-            quickCheck.CommandText = "PRAGMA quick_check;";
+            quickCheck.CommandText = "PRAGMA integrity_check;";
             var result = Convert.ToString(
                 await quickCheck.ExecuteScalarAsync(cancellationToken),
                 CultureInfo.InvariantCulture);
@@ -261,10 +323,13 @@ public sealed class LocalDatabaseBackupService
         await stream.FlushAsync(cancellationToken);
     }
 
-    private static LatestSnapshot? ReadLatestManifest(string backupDirectory)
+    private static async Task<LatestSnapshot?> ReadLatestValidSnapshotAsync(
+        string backupDirectory,
+        CancellationToken cancellationToken)
     {
         foreach (var snapshotPath in EnumerateSnapshots(backupDirectory))
         {
+            cancellationToken.ThrowIfCancellationRequested();
             try
             {
                 var manifestPath = GetManifestPath(snapshotPath);
@@ -279,11 +344,24 @@ public sealed class LocalDatabaseBackupService
                     !string.Equals(
                         manifest.DatabaseFileName,
                         Path.GetFileName(snapshotPath),
+                        StringComparison.OrdinalIgnoreCase) ||
+                    manifest.DatabaseSize != new FileInfo(snapshotPath).Length)
+                {
+                    continue;
+                }
+
+                var actualSha256 = await ComputeSha256Async(
+                    snapshotPath,
+                    cancellationToken);
+                if (!string.Equals(
+                        manifest.Sha256,
+                        actualSha256,
                         StringComparison.OrdinalIgnoreCase))
                 {
                     continue;
                 }
 
+                await VerifySnapshotAsync(snapshotPath, cancellationToken);
                 return new LatestSnapshot(
                     snapshotPath,
                     manifest,
@@ -298,6 +376,18 @@ public sealed class LocalDatabaseBackupService
             catch (JsonException)
             {
                 // A damaged sidecar must not block creation of a fresh snapshot.
+            }
+            catch (InvalidDataException)
+            {
+                // A damaged snapshot must not block creation of a fresh snapshot.
+            }
+            catch (SqliteException)
+            {
+                // A damaged snapshot must not block creation of a fresh snapshot.
+            }
+            catch (UnauthorizedAccessException)
+            {
+                // An unreadable snapshot must not block creation of a fresh snapshot.
             }
         }
 

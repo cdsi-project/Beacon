@@ -3,6 +3,38 @@ namespace CDSI.Agent.WinForms.Tests;
 public sealed class StartupFailureReporterTests
 {
     [Fact]
+    public void CreateUserFacingMessage_IncludesStateRestoreSafetyBackupPath()
+    {
+        var safetyPath = Path.Combine(Path.GetTempPath(), "Beacon Safety", "restore-3");
+        var exception = new CDSI.Agent.Infrastructure.Persistence.StateRestoreFailedException(
+            "状态恢复和回滚均失败。",
+            currentStateIsSafe: false,
+            new IOException("failure"),
+            safetyPath);
+
+        var message = StartupFailureReporter.CreateUserFacingMessage(exception);
+
+        Assert.Contains("状态恢复和回滚均失败", message);
+        Assert.Contains(Path.GetFullPath(safetyPath), message);
+    }
+
+    [Fact]
+    public void CreateUserFacingMessage_DoesNotMaskFailureWhenSafetyPathIsInvalid()
+    {
+        var exception = new CDSI.Agent.Infrastructure.Persistence.StateRestoreFailedException(
+            "原始启动错误",
+            currentStateIsSafe: false,
+            new IOException("failure"),
+            "invalid\0path");
+
+        var message = StartupFailureReporter.CreateUserFacingMessage(exception);
+
+        Assert.Contains("原始启动错误", message);
+        Assert.DoesNotContain("invalid", message);
+        Assert.Null(StartupFailureReporter.NormalizeReportablePath("invalid\0path"));
+    }
+
+    [Fact]
     public void RedactSensitiveText_RemovesCredentialsAndUrlQueries()
     {
         const string input =

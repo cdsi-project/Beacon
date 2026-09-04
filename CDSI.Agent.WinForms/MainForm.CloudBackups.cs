@@ -577,6 +577,31 @@ public sealed partial class MainForm
             return;
         }
 
+        if (!TryBeginStatefulOperation())
+        {
+            return;
+        }
+
+        try
+        {
+            await RestoreCloudBackupsCoreAsync(selected);
+        }
+        finally
+        {
+            _progressBar.Style = ProgressBarStyle.Blocks;
+            SetBusy(false);
+        }
+    }
+
+    private async Task RestoreCloudBackupsCoreAsync(
+        IReadOnlyList<ManagedObjectStorageBackup> selected)
+    {
+        _progressBar.Style = ProgressBarStyle.Marquee;
+        _progressBar.MarqueeAnimationSpeed = 24;
+        _progressLabel.Text = "正在准备从云端取回资产";
+        _currentPathLabel.Text = string.Empty;
+        _statusLabel.Text = "正在准备云端取回";
+
         var candidates = selected
             .GroupBy(item => item.Source.AssetId)
             .Select(group => new ObjectStorageRestoreCandidate(
@@ -609,7 +634,6 @@ public sealed partial class MainForm
         _scanCancellation?.Dispose();
         _restoreSpeedTracker.Reset();
         _scanCancellation = new CancellationTokenSource();
-        SetBusy(true);
         _progressBar.MarqueeAnimationSpeed = 0;
         _progressBar.Style = ProgressBarStyle.Continuous;
         _progressBar.Minimum = 0;
@@ -634,11 +658,6 @@ public sealed partial class MainForm
         {
             _statusLabel.Text = "云端取回失败";
             ShowError("云端取回未能完成", exception);
-        }
-        finally
-        {
-            _progressBar.Style = ProgressBarStyle.Blocks;
-            SetBusy(false);
         }
     }
 

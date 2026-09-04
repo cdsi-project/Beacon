@@ -66,6 +66,11 @@ public sealed partial class MainForm
             return;
         }
 
+        if (!TryBeginStatefulOperation())
+        {
+            return;
+        }
+
         try
         {
             var projects = await _assetCollectionService.ListAsync();
@@ -99,19 +104,30 @@ public sealed partial class MainForm
                 .Select(asset => asset.AssetId)
                 .Distinct()
                 .ToArray();
-            var added = await _assetCollectionService.AddAssetsAsync(
-                projectId.Value,
-                assetIds);
-            await RefreshAssetCollectionsAsync(projectId);
-            await RefreshAssetPageAsync();
-            _statusLabel.Text = added == 0
-                ? "所选资产已在目标项目中，准备同步"
-                : $"已将 {added:N0} 个资产加入项目，准备同步";
-            await SyncAssetsToProjectAsync(projectId.Value, assetIds);
+            if (!await _stateDatabaseWriteGate.TryRunAsync(async () =>
+            {
+                var added = await _assetCollectionService.AddAssetsAsync(
+                    projectId.Value,
+                    assetIds);
+                await RefreshAssetCollectionsAsync(projectId);
+                await RefreshAssetPageAsync();
+                _statusLabel.Text = added == 0
+                    ? "所选资产已在目标项目中，准备同步"
+                    : $"已将 {added:N0} 个资产加入项目，准备同步";
+            }))
+            {
+                return;
+            }
+
+            await SyncAssetsToProjectCoreAsync(projectId.Value, assetIds);
         }
         catch (Exception exception)
         {
             ShowError("无法加入项目并同步到云端", exception);
+        }
+        finally
+        {
+            SetBusy(false);
         }
     }
 
@@ -119,21 +135,37 @@ public sealed partial class MainForm
         Guid projectId,
         IReadOnlyCollection<Guid> assetIds)
     {
+        if (!TryBeginStatefulOperation())
+        {
+            return;
+        }
+
         try
         {
-            var plan = await _assetCollectionService.PrepareSelectedSyncAsync(
-                projectId,
-                assetIds);
-            await BackupProjectAssetsAsync(
-                plan.Assets,
-                $"正在同步项目：{plan.Collection.Name}",
-                plan.Collection.Name,
-                plan.Collection.BackupProfileIds);
+            await SyncAssetsToProjectCoreAsync(projectId, assetIds);
         }
         catch (Exception exception)
         {
             ShowError("无法同步项目资产到云端", exception);
         }
+        finally
+        {
+            SetBusy(false);
+        }
+    }
+
+    private async Task SyncAssetsToProjectCoreAsync(
+        Guid projectId,
+        IReadOnlyCollection<Guid> assetIds)
+    {
+        var plan = await _assetCollectionService.PrepareSelectedSyncAsync(
+            projectId,
+            assetIds);
+        await BackupProjectAssetsAsync(
+            plan.Assets,
+            $"正在同步项目：{plan.Collection.Name}",
+            plan.Collection.Name,
+            plan.Collection.BackupProfileIds);
     }
 
     private async Task BackupProjectAssetsAsync(
@@ -214,7 +246,6 @@ public sealed partial class MainForm
         var backupProgress =
             new Progress<ObjectStorageBackupProgress>(UpdateBackupProgress);
 
-        SetBusy(true);
         _progressBar.MarqueeAnimationSpeed = 0;
         _progressBar.Style = ProgressBarStyle.Continuous;
         _progressBar.Minimum = 0;
@@ -296,7 +327,6 @@ public sealed partial class MainForm
         finally
         {
             _progressBar.Style = ProgressBarStyle.Blocks;
-            SetBusy(false);
         }
     }
 

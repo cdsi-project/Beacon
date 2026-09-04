@@ -357,10 +357,23 @@ public sealed partial class MainForm
 
         try
         {
-            var collection = await _assetCollectionService.CreateAsync(
-                dialog.CollectionName,
-                dialog.CollectionType,
-                dialog.BackupProfileIds);
+            AssetCollection? collection = null;
+            if (!await _stateDatabaseWriteGate.TryRunAsync(async () =>
+            {
+                collection = await _assetCollectionService.CreateAsync(
+                    dialog.CollectionName,
+                    dialog.CollectionType,
+                    dialog.BackupProfileIds);
+            }))
+            {
+                return null;
+            }
+
+            if (collection is null)
+            {
+                throw new InvalidOperationException("项目创建未返回结果。");
+            }
+
             _statusLabel.Text = $"已创建项目：{collection.Name}";
             return collection.Id;
         }
@@ -760,14 +773,17 @@ public sealed partial class MainForm
         Guid collectionId,
         IReadOnlyList<AssetListItem> selectedAssets)
     {
-        var added = await _assetCollectionService.AddAssetsAsync(
-            collectionId,
-            selectedAssets.Select(asset => asset.AssetId).ToArray());
-        await RefreshAssetCollectionsAsync(collectionId);
-        await RefreshAssetPageAsync();
-        _statusLabel.Text = added == 0
-            ? "所选资产已在该项目中"
-            : $"已将 {added:N0} 个资产加入项目";
+        _ = await _stateDatabaseWriteGate.TryRunAsync(async () =>
+        {
+            var added = await _assetCollectionService.AddAssetsAsync(
+                collectionId,
+                selectedAssets.Select(asset => asset.AssetId).ToArray());
+            await RefreshAssetCollectionsAsync(collectionId);
+            await RefreshAssetPageAsync();
+            _statusLabel.Text = added == 0
+                ? "所选资产已在该项目中"
+                : $"已将 {added:N0} 个资产加入项目";
+        });
     }
 
     private async Task RemoveSelectedCollectionMembersAsync()
@@ -794,13 +810,19 @@ public sealed partial class MainForm
 
         try
         {
-            var removed = await _assetCollectionService.RemoveAssetsAsync(
-                project.Id,
-                members.Select(member => member.Asset.AssetId).ToArray());
-            await RefreshAssetCollectionsAsync(project.Id);
-            await RefreshAssetPageAsync();
-            _statusLabel.Text =
-                $"已将 {removed:N0} 个资产移出项目“{project.Name}”；本地文件未更改";
+            if (!await _stateDatabaseWriteGate.TryRunAsync(async () =>
+            {
+                var removed = await _assetCollectionService.RemoveAssetsAsync(
+                    project.Id,
+                    members.Select(member => member.Asset.AssetId).ToArray());
+                await RefreshAssetCollectionsAsync(project.Id);
+                await RefreshAssetPageAsync();
+                _statusLabel.Text =
+                    $"已将 {removed:N0} 个资产移出项目“{project.Name}”；本地文件未更改";
+            }))
+            {
+                return;
+            }
         }
         catch (Exception exception)
         {
@@ -825,6 +847,11 @@ public sealed partial class MainForm
     {
         var selected = GetSelectedCollection();
         if (selected is null)
+        {
+            return;
+        }
+
+        if (!TryBeginStatefulOperation())
         {
             return;
         }
@@ -863,6 +890,10 @@ public sealed partial class MainForm
         catch (Exception exception)
         {
             ShowError("无法同步项目", exception);
+        }
+        finally
+        {
+            SetBusy(false);
         }
     }
 

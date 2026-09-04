@@ -4,6 +4,8 @@ namespace CDSI.Agent.Infrastructure.Reader;
 
 internal static class ReaderDatabaseMigrator
 {
+    internal const int CurrentSchemaVersion = 1;
+
     public static async Task MigrateAsync(
         string connectionString,
         CancellationToken cancellationToken)
@@ -27,9 +29,16 @@ internal static class ReaderDatabaseMigrator
         await using var versionCommand = connection.CreateCommand();
         versionCommand.CommandText =
             "SELECT COALESCE(MAX(version), 0) FROM reader_schema_migrations;";
-        var version = Convert.ToInt32(
+        var version = Convert.ToInt64(
             await versionCommand.ExecuteScalarAsync(cancellationToken));
-        if (version >= 1)
+        if (version > CurrentSchemaVersion)
+        {
+            throw new InvalidOperationException(
+                $"RSS订阅数据库架构版本 {version} 高于当前 Beacon 支持的版本 " +
+                $"{CurrentSchemaVersion}，请升级 Beacon 后重试。");
+        }
+
+        if (version >= CurrentSchemaVersion)
         {
             return;
         }

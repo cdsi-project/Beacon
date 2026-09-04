@@ -215,14 +215,16 @@ public sealed class MainFormLayoutTests
     }
 
     [Theory]
-    [InlineData(false, false, false, true)]
-    [InlineData(true, false, false, false)]
-    [InlineData(false, true, false, false)]
-    [InlineData(false, false, true, false)]
+    [InlineData(false, false, false, false, true)]
+    [InlineData(true, false, false, false, false)]
+    [InlineData(false, true, false, false, false)]
+    [InlineData(false, false, true, false, false)]
+    [InlineData(false, false, false, true, false)]
     public void CanStartIdleScan_RequiresAnIdleApplication(
         bool isBusy,
         bool checkInProgress,
         bool hasOpenModalWindow,
+        bool stateProtectionInProgress,
         bool expected)
     {
         Assert.Equal(
@@ -230,7 +232,8 @@ public sealed class MainFormLayoutTests
             MainForm.CanStartIdleScan(
                 isBusy,
                 checkInProgress,
-                hasOpenModalWindow));
+                hasOpenModalWindow,
+                stateProtectionInProgress));
     }
 
     [Fact]

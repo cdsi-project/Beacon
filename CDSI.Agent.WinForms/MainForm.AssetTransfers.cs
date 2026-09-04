@@ -302,10 +302,17 @@ public sealed partial class MainForm
 
         try
         {
-            var hidden = await _scanService.HideAssetsFromListAsync(
-                selected.Select(asset => asset.AssetId).Distinct().ToArray());
-            await RefreshAssetPageAsync();
-            _statusLabel.Text = $"已从资产列表移除 {hidden:N0} 个资产，本地文件未删除";
+            if (!await _stateDatabaseWriteGate.TryRunAsync(async () =>
+            {
+                var hidden = await _scanService.HideAssetsFromListAsync(
+                    selected.Select(asset => asset.AssetId).Distinct().ToArray());
+                await RefreshAssetPageAsync();
+                _statusLabel.Text =
+                    $"已从资产列表移除 {hidden:N0} 个资产，本地文件未删除";
+            }))
+            {
+                return;
+            }
         }
         catch (Exception exception)
         {

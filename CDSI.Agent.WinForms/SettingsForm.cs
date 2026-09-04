@@ -14,6 +14,7 @@ public sealed partial class SettingsForm : Form
     private readonly WorkspaceApplicationService _workspaceService;
     private readonly ScanRootManagementService _scanRootService;
     private readonly ObjectStorageProfileService _storageService;
+    private readonly StateDatabaseWriteGate _stateDatabaseWriteGate;
     private readonly TextBox _workspacePathTextBox = new();
     private readonly DataGridView _rootsGrid = new();
     private readonly ContextMenuStrip _rootContextMenu = new();
@@ -29,22 +30,28 @@ public sealed partial class SettingsForm : Form
     private readonly ToolStripMenuItem _deleteStorageMenuItem = new();
     private readonly Button _startScanButton = new();
     private readonly HashSet<Guid> _initialScanRootIds = [];
+    private bool _asyncOperationInProgress;
 
     internal IReadOnlyCollection<Guid> InitialScanRootIds =>
         _initialScanRootIds.ToArray();
 
-    public SettingsForm(
+    internal bool AsyncOperationInProgress => _asyncOperationInProgress;
+
+    internal SettingsForm(
         WorkspaceApplicationService workspaceService,
         ScanRootManagementService scanRootService,
         ObjectStorageProfileService storageService,
         OpenWebSettingsService openWebSettingsService,
-        GitProfileService gitProfileService)
+        GitProfileService gitProfileService,
+        StateDatabaseWriteGate stateDatabaseWriteGate)
     {
         _workspaceService = workspaceService;
         _scanRootService = scanRootService;
         _storageService = storageService;
         _openWebSettingsService = openWebSettingsService;
         _gitProfileService = gitProfileService;
+        _stateDatabaseWriteGate = stateDatabaseWriteGate ??
+            throw new ArgumentNullException(nameof(stateDatabaseWriteGate));
 
         Text = "CDSI Beacon 设置";
         StartPosition = FormStartPosition.CenterParent;
@@ -97,6 +104,65 @@ public sealed partial class SettingsForm : Form
         Controls.Add(tabs);
         Controls.Add(footer);
         Shown += SettingsForm_Shown;
+    }
+
+    internal static bool ShouldCancelClose(bool asyncOperationInProgress) =>
+        asyncOperationInProgress;
+
+    protected override void OnFormClosing(FormClosingEventArgs e)
+    {
+        if (ShouldCancelClose(_asyncOperationInProgress))
+        {
+            e.Cancel = true;
+            DialogResult = DialogResult.None;
+            return;
+        }
+
+        base.OnFormClosing(e);
+    }
+
+    private bool TryBeginAsyncOperation()
+    {
+        if (_asyncOperationInProgress)
+        {
+            return false;
+        }
+
+        SetAsyncOperationInProgress(true);
+        return true;
+    }
+
+    private void SetAsyncOperationInProgress(bool inProgress)
+    {
+        _asyncOperationInProgress = inProgress;
+        foreach (Control control in Controls)
+        {
+            control.Enabled = !inProgress;
+        }
+
+        UseWaitCursor = inProgress;
+        if (!inProgress)
+        {
+            UpdateStartScanButton();
+        }
+    }
+
+    internal async Task<bool> TryRunStateDatabaseWriteAsync(Func<Task> operation)
+    {
+        ArgumentNullException.ThrowIfNull(operation);
+        if (!TryBeginAsyncOperation())
+        {
+            return false;
+        }
+
+        try
+        {
+            return await _stateDatabaseWriteGate.TryRunAsync(operation);
+        }
+        finally
+        {
+            SetAsyncOperationInProgress(false);
+        }
     }
 
     private TabPage CreateWorkspacePage()
@@ -388,6 +454,11 @@ public sealed partial class SettingsForm : Form
 
     private async void SettingsForm_Shown(object? sender, EventArgs e)
     {
+        if (!TryBeginAsyncOperation())
+        {
+            return;
+        }
+
         try
         {
             await RefreshWorkspaceAsync();
@@ -399,6 +470,10 @@ public sealed partial class SettingsForm : Form
         catch (Exception exception)
         {
             ShowError("无法读取设置", exception);
+        }
+        finally
+        {
+            SetAsyncOperationInProgress(false);
         }
     }
 
@@ -457,28 +532,34 @@ public sealed partial class SettingsForm : Form
     {
         try
         {
-            var path = _workspacePathTextBox.Text.Trim();
-            var current = await _workspaceService.GetAsync();
-            if (current is not null &&
-                !string.Equals(
-                    Path.GetFullPath(current.Path),
-                    Path.GetFullPath(path),
-                    StringComparison.OrdinalIgnoreCase) &&
-                MessageBox.Show(
-                    this,
-                    "切换后不会搬移或删除旧工作目录中的文件。继续吗？",
-                    "更改工作目录",
-                    MessageBoxButtons.OKCancel,
-                    MessageBoxIcon.Warning) != DialogResult.OK)
+            if (!await TryRunStateDatabaseWriteAsync(async () =>
+            {
+                var path = _workspacePathTextBox.Text.Trim();
+                var current = await _workspaceService.GetAsync();
+                if (current is not null &&
+                    !string.Equals(
+                        Path.GetFullPath(current.Path),
+                        Path.GetFullPath(path),
+                        StringComparison.OrdinalIgnoreCase) &&
+                    MessageBox.Show(
+                        this,
+                        "切换后不会搬移或删除旧工作目录中的文件。继续吗？",
+                        "更改工作目录",
+                        MessageBoxButtons.OKCancel,
+                        MessageBoxIcon.Warning) != DialogResult.OK)
+                {
+                    return;
+                }
+
+                var result = await _workspaceService.ConfigureAsync(path);
+                _workspacePathTextBox.Text = result.Workspace.Path;
+                _workspaceStatusLabel.Text = FormatWorkspaceStatus(
+                    result.Workspace.Path,
+                    result.Layout.InboxPath);
+            }))
             {
                 return;
             }
-
-            var result = await _workspaceService.ConfigureAsync(path);
-            _workspacePathTextBox.Text = result.Workspace.Path;
-            _workspaceStatusLabel.Text = FormatWorkspaceStatus(
-                result.Workspace.Path,
-                result.Layout.InboxPath);
         }
         catch (Exception exception)
         {
@@ -502,28 +583,34 @@ public sealed partial class SettingsForm : Form
 
         try
         {
-            var result = await _scanRootService.AddExternalAsync(
-                dialog.SelectedPath,
-                dialog.FileTypeFilters,
-                dialog.ExtensionWhitelist);
-            await _scanRootService.SetIdleScanScheduleAsync(
-                result.Root.Id,
-                dialog.IdleScanSchedule);
-            if (result.RequiresInitialScan)
+            if (!await TryRunStateDatabaseWriteAsync(async () =>
             {
-                _initialScanRootIds.Add(result.Root.Id);
-            }
+                var result = await _scanRootService.AddExternalAsync(
+                    dialog.SelectedPath,
+                    dialog.FileTypeFilters,
+                    dialog.ExtensionWhitelist);
+                await _scanRootService.SetIdleScanScheduleAsync(
+                    result.Root.Id,
+                    dialog.IdleScanSchedule);
+                if (result.RequiresInitialScan)
+                {
+                    _initialScanRootIds.Add(result.Root.Id);
+                }
 
-            await RefreshRootsAsync();
-            UpdateStartScanButton();
-            if (result.Warnings.Count > 0)
+                await RefreshRootsAsync();
+                UpdateStartScanButton();
+                if (result.Warnings.Count > 0)
+                {
+                    MessageBox.Show(
+                        this,
+                        string.Join(Environment.NewLine, result.Warnings),
+                        "目录重叠",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Information);
+                }
+            }))
             {
-                MessageBox.Show(
-                    this,
-                    string.Join(Environment.NewLine, result.Warnings),
-                    "目录重叠",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Information);
+                return;
             }
         }
         catch (Exception exception)
@@ -567,14 +654,20 @@ public sealed partial class SettingsForm : Form
 
         try
         {
-            await _scanRootService.SetFileFilterAsync(
-                root.Id,
-                dialog.FileTypeFilters,
-                dialog.ExtensionWhitelist);
-            await _scanRootService.SetIdleScanScheduleAsync(
-                root.Id,
-                dialog.IdleScanSchedule);
-            await RefreshRootsAsync();
+            if (!await TryRunStateDatabaseWriteAsync(async () =>
+            {
+                await _scanRootService.SetFileFilterAsync(
+                    root.Id,
+                    dialog.FileTypeFilters,
+                    dialog.ExtensionWhitelist);
+                await _scanRootService.SetIdleScanScheduleAsync(
+                    root.Id,
+                    dialog.IdleScanSchedule);
+                await RefreshRootsAsync();
+            }))
+            {
+                return;
+            }
         }
         catch (Exception exception)
         {
@@ -591,19 +684,25 @@ public sealed partial class SettingsForm : Form
 
         try
         {
-            var enable = !root.Enabled;
-            await _scanRootService.SetEnabledAsync(root.Id, enable);
-            if (!enable)
+            if (!await TryRunStateDatabaseWriteAsync(async () =>
             {
-                _initialScanRootIds.Remove(root.Id);
-            }
-            else if (root.LastScannedAt is null)
-            {
-                _initialScanRootIds.Add(root.Id);
-            }
+                var enable = !root.Enabled;
+                await _scanRootService.SetEnabledAsync(root.Id, enable);
+                if (!enable)
+                {
+                    _initialScanRootIds.Remove(root.Id);
+                }
+                else if (root.LastScannedAt is null)
+                {
+                    _initialScanRootIds.Add(root.Id);
+                }
 
-            await RefreshRootsAsync();
-            UpdateStartScanButton();
+                await RefreshRootsAsync();
+                UpdateStartScanButton();
+            }))
+            {
+                return;
+            }
         }
         catch (Exception exception)
         {
@@ -626,10 +725,16 @@ public sealed partial class SettingsForm : Form
 
         try
         {
-            await _scanRootService.RemoveAsync(root.Id);
-            _initialScanRootIds.Remove(root.Id);
-            await RefreshRootsAsync();
-            UpdateStartScanButton();
+            if (!await TryRunStateDatabaseWriteAsync(async () =>
+            {
+                await _scanRootService.RemoveAsync(root.Id);
+                _initialScanRootIds.Remove(root.Id);
+                await RefreshRootsAsync();
+                UpdateStartScanButton();
+            }))
+            {
+                return;
+            }
         }
         catch (Exception exception)
         {
@@ -770,8 +875,15 @@ public sealed partial class SettingsForm : Form
         {
             try
             {
-                await _storageService.SaveAsync(dialog.CreateRequest());
-                await RefreshStorageAsync();
+                if (!await TryRunStateDatabaseWriteAsync(async () =>
+                {
+                    await _storageService.SaveAsync(dialog.CreateRequest());
+                    await RefreshStorageAsync();
+                }))
+                {
+                    return;
+                }
+
                 return;
             }
             catch (Exception exception)
@@ -817,8 +929,14 @@ public sealed partial class SettingsForm : Form
 
         try
         {
-            await _storageService.DeleteAsync(configured.Profile.Id);
-            await RefreshStorageAsync();
+            if (!await TryRunStateDatabaseWriteAsync(async () =>
+            {
+                await _storageService.DeleteAsync(configured.Profile.Id);
+                await RefreshStorageAsync();
+            }))
+            {
+                return;
+            }
         }
         catch (Exception exception)
         {

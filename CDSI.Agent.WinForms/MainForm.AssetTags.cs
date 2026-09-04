@@ -102,20 +102,26 @@ public sealed partial class MainForm
         try
         {
             var assetIds = selected.Select(asset => asset.AssetId).ToArray();
-            if (remove && tagId is not null)
+            if (!await _stateDatabaseWriteGate.TryRunAsync(async () =>
             {
-                var removed = await _assetTagService.RemoveAsync(tagId.Value, assetIds);
-                _statusLabel.Text = $"已从 {removed:N0} 个资产移除标签：{tagName}";
-            }
-            else
-            {
-                var added = await _assetTagService.AssignAsync(tagName, assetIds);
-                _statusLabel.Text = added == 0
-                    ? $"所选资产已有标签：{tagName}"
-                    : $"已为 {added:N0} 个资产添加标签：{tagName}";
-            }
+                if (remove && tagId is not null)
+                {
+                    var removed = await _assetTagService.RemoveAsync(tagId.Value, assetIds);
+                    _statusLabel.Text = $"已从 {removed:N0} 个资产移除标签：{tagName}";
+                }
+                else
+                {
+                    var added = await _assetTagService.AssignAsync(tagName, assetIds);
+                    _statusLabel.Text = added == 0
+                        ? $"所选资产已有标签：{tagName}"
+                        : $"已为 {added:N0} 个资产添加标签：{tagName}";
+                }
 
-            await RefreshAssetPageAsync();
+                await RefreshAssetPageAsync();
+            }))
+            {
+                return;
+            }
         }
         catch (Exception exception)
         {
@@ -129,13 +135,19 @@ public sealed partial class MainForm
     {
         try
         {
-            var added = await _assetTagService.AssignAsync(
-                tagName,
-                selectedAssets.Select(asset => asset.AssetId).ToArray());
-            _statusLabel.Text = added == 0
-                ? $"所选资产已有标签：{tagName}"
-                : $"已为 {added:N0} 个资产添加标签：{tagName}";
-            await RefreshAssetPageAsync();
+            if (!await _stateDatabaseWriteGate.TryRunAsync(async () =>
+            {
+                var added = await _assetTagService.AssignAsync(
+                    tagName,
+                    selectedAssets.Select(asset => asset.AssetId).ToArray());
+                _statusLabel.Text = added == 0
+                    ? $"所选资产已有标签：{tagName}"
+                    : $"已为 {added:N0} 个资产添加标签：{tagName}";
+                await RefreshAssetPageAsync();
+            }))
+            {
+                return;
+            }
         }
         catch (Exception exception)
         {

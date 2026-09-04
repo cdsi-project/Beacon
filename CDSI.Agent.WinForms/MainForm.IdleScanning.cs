@@ -24,7 +24,8 @@ public sealed partial class MainForm
         if (!CanStartIdleScan(
                 _isBusy,
                 _idleScanCheckInProgress,
-                HasOpenIdleScanBlockingModalWindow()))
+                HasOpenIdleScanBlockingModalWindow(),
+                _databaseBackupInProgress))
         {
             return;
         }
@@ -36,7 +37,8 @@ public sealed partial class MainForm
             if (!CanStartIdleScan(
                     _isBusy,
                     checkInProgress: false,
-                    hasBlockingModalWindow: HasOpenIdleScanBlockingModalWindow()))
+                    hasBlockingModalWindow: HasOpenIdleScanBlockingModalWindow(),
+                    stateProtectionInProgress: _databaseBackupInProgress))
             {
                 return;
             }
@@ -85,9 +87,13 @@ public sealed partial class MainForm
     internal static bool CanStartIdleScan(
         bool isBusy,
         bool checkInProgress,
-        bool hasBlockingModalWindow)
+        bool hasBlockingModalWindow,
+        bool stateProtectionInProgress)
     {
-        return !isBusy && !checkInProgress && !hasBlockingModalWindow;
+        return !isBusy &&
+            !checkInProgress &&
+            !hasBlockingModalWindow &&
+            !stateProtectionInProgress;
     }
 
     private static DateTimeOffset GetIdleScanAnchor(ScanRoot root)

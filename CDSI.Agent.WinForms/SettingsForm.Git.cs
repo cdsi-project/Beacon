@@ -220,8 +220,15 @@ public sealed partial class SettingsForm
         {
             try
             {
-                await _gitProfileService.SaveAsync(dialog.CreateRequest());
-                await RefreshGitProfilesAsync();
+                if (!await TryRunStateDatabaseWriteAsync(async () =>
+                {
+                    await _gitProfileService.SaveAsync(dialog.CreateRequest());
+                    await RefreshGitProfilesAsync();
+                }))
+                {
+                    return;
+                }
+
                 return;
             }
             catch (Exception exception)
@@ -277,8 +284,14 @@ public sealed partial class SettingsForm
 
         try
         {
-            await _gitProfileService.SetDefaultAsync(configured.Profile.Id);
-            await RefreshGitProfilesAsync();
+            if (!await TryRunStateDatabaseWriteAsync(async () =>
+            {
+                await _gitProfileService.SetDefaultAsync(configured.Profile.Id);
+                await RefreshGitProfilesAsync();
+            }))
+            {
+                return;
+            }
         }
         catch (Exception exception)
         {
@@ -301,8 +314,14 @@ public sealed partial class SettingsForm
 
         try
         {
-            await _gitProfileService.DeleteAsync(configured.Profile.Id);
-            await RefreshGitProfilesAsync();
+            if (!await TryRunStateDatabaseWriteAsync(async () =>
+            {
+                await _gitProfileService.DeleteAsync(configured.Profile.Id);
+                await RefreshGitProfilesAsync();
+            }))
+            {
+                return;
+            }
         }
         catch (Exception exception)
         {

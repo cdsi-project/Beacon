@@ -30,67 +30,77 @@ public sealed partial class MainForm
             return;
         }
 
-        var defaultTitle = Path.GetFileNameWithoutExtension(asset.OriginalFilename);
-        IReadOnlyList<ConfiguredOpenWebSource> sources;
-        try
-        {
-            sources = await _openWebSettingsService.ListAsync();
-        }
-        catch (Exception exception)
-        {
-            ShowError("无法读取 OpenWeb 源站", exception);
-            return;
-        }
-
-        if (sources.Count == 0)
-        {
-            MessageBox.Show(
-                this,
-                "尚未配置 OpenWeb 源站，请先在设置中添加。",
-                "CDSI Beacon",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Information);
-            return;
-        }
-
-        using var confirmation = new OpenWebArticlePublishForm(
-            defaultTitle,
-            asset.Path,
-            sources);
-        if (confirmation.ShowDialog(this) != DialogResult.OK)
+        if (!TryBeginStatefulOperation())
         {
             return;
         }
 
-        _scanCancellation?.Dispose();
-        _scanCancellation = new CancellationTokenSource();
-        SetBusy(true);
         _progressBar.Style = ProgressBarStyle.Marquee;
         _progressBar.MarqueeAnimationSpeed = 24;
-        _progressLabel.Text = "正在发布文章";
+        _progressLabel.Text = "正在准备文章发布";
         _currentPathLabel.Text = asset.Path;
-        _statusLabel.Text = "正在发布到 OpenWeb";
+        _statusLabel.Text = "正在准备发布到 OpenWeb";
 
         try
         {
-            var result = await _openWebPublishingService.PublishAsync(
-                new OpenWebArticlePublishRequest(
-                    asset.AssetId,
-                    confirmation.SourceId,
-                    asset.Path,
-                    confirmation.ArticleTitle,
-                    confirmation.ArticleStatus),
-                _scanCancellation.Token);
-            ShowOpenWebPublishResult(result);
-        }
-        catch (OperationCanceledException)
-        {
-            _statusLabel.Text = "OpenWeb 发布已取消";
-        }
-        catch (Exception exception)
-        {
-            _statusLabel.Text = "OpenWeb 发布失败";
-            ShowError("文章未能发布到 OpenWeb", exception);
+            var defaultTitle = Path.GetFileNameWithoutExtension(asset.OriginalFilename);
+            IReadOnlyList<ConfiguredOpenWebSource> sources;
+            try
+            {
+                sources = await _openWebSettingsService.ListAsync();
+            }
+            catch (Exception exception)
+            {
+                ShowError("无法读取 OpenWeb 源站", exception);
+                return;
+            }
+
+            if (sources.Count == 0)
+            {
+                MessageBox.Show(
+                    this,
+                    "尚未配置 OpenWeb 源站，请先在设置中添加。",
+                    "CDSI Beacon",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+                return;
+            }
+
+            using var confirmation = new OpenWebArticlePublishForm(
+                defaultTitle,
+                asset.Path,
+                sources);
+            if (confirmation.ShowDialog(this) != DialogResult.OK)
+            {
+                return;
+            }
+
+            _scanCancellation?.Dispose();
+            _scanCancellation = new CancellationTokenSource();
+            _progressLabel.Text = "正在发布文章";
+            _statusLabel.Text = "正在发布到 OpenWeb";
+
+            try
+            {
+                var result = await _openWebPublishingService.PublishAsync(
+                    new OpenWebArticlePublishRequest(
+                        asset.AssetId,
+                        confirmation.SourceId,
+                        asset.Path,
+                        confirmation.ArticleTitle,
+                        confirmation.ArticleStatus),
+                    _scanCancellation.Token);
+                ShowOpenWebPublishResult(result);
+            }
+            catch (OperationCanceledException)
+            {
+                _statusLabel.Text = "OpenWeb 发布已取消";
+            }
+            catch (Exception exception)
+            {
+                _statusLabel.Text = "OpenWeb 发布失败";
+                ShowError("文章未能发布到 OpenWeb", exception);
+            }
         }
         finally
         {

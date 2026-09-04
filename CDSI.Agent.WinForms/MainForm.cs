@@ -38,7 +38,9 @@ public sealed partial class MainForm : Form
     private readonly MetadataExtractionApplicationService _metadataService;
     private readonly LocalDatabaseBackupService _localDatabaseBackupService;
     private readonly LocalDatabaseBackupService _readerDatabaseBackupService;
+    private readonly LocalStateProtectionService _localStateProtectionService;
     private readonly GiteeApplicationUpdateChecker _applicationUpdateChecker;
+    private readonly MissingStateDatabases _missingStateDatabasesAtStartup;
     private readonly string _clientId;
     private readonly System.Windows.Forms.Timer _databaseBackupTimer = new();
     private readonly TableLayoutPanel _progressPanel = new();
@@ -84,7 +86,9 @@ public sealed partial class MainForm : Form
         ManagedAssetTransferService transferService,
         LocalDatabaseBackupService localDatabaseBackupService,
         LocalDatabaseBackupService readerDatabaseBackupService,
+        LocalStateProtectionService localStateProtectionService,
         GiteeApplicationUpdateChecker applicationUpdateChecker,
+        MissingStateDatabases missingStateDatabasesAtStartup,
         string clientId,
         string dataDirectory,
         RuntimeLogService runtimeLog)
@@ -111,8 +115,11 @@ public sealed partial class MainForm : Form
         _localDatabaseBackupService = localDatabaseBackupService;
         _readerDatabaseBackupService = readerDatabaseBackupService ??
             throw new ArgumentNullException(nameof(readerDatabaseBackupService));
+        _localStateProtectionService = localStateProtectionService ??
+            throw new ArgumentNullException(nameof(localStateProtectionService));
         _applicationUpdateChecker = applicationUpdateChecker ??
             throw new ArgumentNullException(nameof(applicationUpdateChecker));
+        _missingStateDatabasesAtStartup = missingStateDatabasesAtStartup;
         _clientId = string.IsNullOrWhiteSpace(clientId)
             ? throw new ArgumentException("Client ID is required.", nameof(clientId))
             : clientId;
@@ -731,6 +738,13 @@ public sealed partial class MainForm : Form
 
     private async void MainForm_Shown(object? sender, EventArgs e)
     {
+        _initializationSucceeded = false;
+        if (_missingStateDatabasesAtStartup != MissingStateDatabases.None &&
+            !await ResolveMissingStateDatabasesAsync(_missingStateDatabasesAtStartup))
+        {
+            return;
+        }
+
         SetBusy(true, allowCancel: false);
         try
         {
@@ -752,24 +766,39 @@ public sealed partial class MainForm : Form
             }
 
             await TryCreateAutomaticDatabaseBackupAsync(workspace.Path);
-            _databaseBackupTimer.Start();
-            _idleScanTimer.Start();
 
-            var volumeResult = await _volumeReconciliationService.ReconcileAsync();
+            var volumeResult = await ReconcileLocalVolumesAsync();
             EnableLocalVolumeMonitoring();
             await RefreshAssetsAsync();
             _statusLabel.Text = volumeResult.HasChanges
                 ? FormatVolumeReconciliationStatus(volumeResult)
                 : "就绪";
+            _initializationSucceeded = true;
+            SetBackgroundTimerRunning(_databaseBackupTimer, shouldRun: true);
+            SetBackgroundTimerRunning(_idleScanTimer, shouldRun: true);
         }
         catch (Exception exception)
         {
+            SetBackgroundTimerRunning(_databaseBackupTimer, shouldRun: false);
+            SetBackgroundTimerRunning(_idleScanTimer, shouldRun: false);
+            await PauseLocalVolumeMonitoringAsync();
+            ResumeLocalVolumeMonitoring(enableMonitoring: false);
             _statusLabel.Text = "初始化失败";
             ShowError("无法初始化应用", exception);
         }
         finally
         {
             SetBusy(false);
+        }
+
+        ShowStartupStateRestoreNotification();
+
+        if (RequiresEmergencyStateRestore(
+                _initializationSucceeded,
+                _readerInitialized))
+        {
+            await OfferEmergencyStateRestoreAsync();
+            return;
         }
 
         await CheckForUpdatesAsync(showCurrentStatus: false);
@@ -782,9 +811,10 @@ public sealed partial class MainForm : Form
             _scanRootService,
             _storageService,
             _openWebSettingsService,
-            _gitProfileService);
+            _gitProfileService,
+            _stateDatabaseWriteGate);
         var settingsResult = settingsForm.ShowDialog(this);
-        await _volumeReconciliationService.ReconcileAsync();
+        await ReconcileLocalVolumesAsync();
         await RefreshAssetCollectionsAsync();
         await TryCreateAutomaticDatabaseBackupAsync();
         if (settingsResult == DialogResult.OK &&
@@ -829,13 +859,17 @@ public sealed partial class MainForm : Form
             return;
         }
 
+        if (!TryBeginStatefulOperation())
+        {
+            return;
+        }
+
         _scanCancellation?.Dispose();
         _scanCancellation = new CancellationTokenSource();
         var scanProgress = new Progress<ScanProgress>(UpdateScanProgress);
         var fingerprintProgress = new Progress<FingerprintProgress>(UpdateFingerprintProgress);
         var metadataProgress = new Progress<MetadataProgress>(UpdateMetadataProgress);
 
-        SetBusy(true);
         _progressBar.Style = ProgressBarStyle.Marquee;
         _progressBar.MarqueeAnimationSpeed = 24;
         _progressLabel.Text = selectedRootIds is null
@@ -1212,6 +1246,43 @@ public sealed partial class MainForm : Form
         UpdateAssetFilterControlState();
         UpdateMainMenuState();
         UseWaitCursor = busy && !allowCancel;
+    }
+
+    private bool TryBeginStatefulOperation(bool allowCancel = true)
+    {
+        if (!CanBeginStatefulOperation(
+                _isBusy,
+                _databaseBackupInProgress,
+                _stateDatabaseWriteGate.IsSuspended))
+        {
+            return false;
+        }
+
+        SetBusy(true, allowCancel);
+        return true;
+    }
+
+    internal static bool CanBeginStatefulOperation(
+        bool isBusy,
+        bool databaseBackupInProgress,
+        bool stateDatabaseWritesSuspended) =>
+        !isBusy &&
+        !databaseBackupInProgress &&
+        !stateDatabaseWritesSuspended;
+
+    internal static void SetBackgroundTimerRunning(
+        System.Windows.Forms.Timer timer,
+        bool shouldRun)
+    {
+        ArgumentNullException.ThrowIfNull(timer);
+        if (shouldRun)
+        {
+            timer.Start();
+        }
+        else
+        {
+            timer.Stop();
+        }
     }
 
     internal static bool ShouldAllowTaskCancellation(bool busy, bool allowCancel)

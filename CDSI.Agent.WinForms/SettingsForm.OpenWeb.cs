@@ -183,8 +183,15 @@ public sealed partial class SettingsForm
         {
             try
             {
-                await _openWebSettingsService.SaveAsync(dialog.CreateRequest());
-                await RefreshOpenWebAsync();
+                if (!await TryRunStateDatabaseWriteAsync(async () =>
+                {
+                    await _openWebSettingsService.SaveAsync(dialog.CreateRequest());
+                    await RefreshOpenWebAsync();
+                }))
+                {
+                    return;
+                }
+
                 return;
             }
             catch (Exception exception)
@@ -243,8 +250,14 @@ public sealed partial class SettingsForm
 
         try
         {
-            await _openWebSettingsService.SetDefaultAsync(configured.Source.Id);
-            await RefreshOpenWebAsync();
+            if (!await TryRunStateDatabaseWriteAsync(async () =>
+            {
+                await _openWebSettingsService.SetDefaultAsync(configured.Source.Id);
+                await RefreshOpenWebAsync();
+            }))
+            {
+                return;
+            }
         }
         catch (Exception exception)
         {
@@ -267,8 +280,14 @@ public sealed partial class SettingsForm
 
         try
         {
-            await _openWebSettingsService.DeleteAsync(configured.Source.Id);
-            await RefreshOpenWebAsync();
+            if (!await TryRunStateDatabaseWriteAsync(async () =>
+            {
+                await _openWebSettingsService.DeleteAsync(configured.Source.Id);
+                await RefreshOpenWebAsync();
+            }))
+            {
+                return;
+            }
         }
         catch (Exception exception)
         {

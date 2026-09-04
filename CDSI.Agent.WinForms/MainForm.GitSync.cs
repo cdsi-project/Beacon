@@ -98,6 +98,16 @@ public sealed partial class MainForm
         AssetCollectionSummary project,
         Guid profileId)
     {
+        if (!TryBeginStatefulOperation())
+        {
+            return;
+        }
+
+        _progressBar.Style = ProgressBarStyle.Marquee;
+        _progressBar.MarqueeAnimationSpeed = 24;
+        _progressLabel.Text = "正在准备 Git 同步";
+        _currentPathLabel.Text = project.Name;
+        _statusLabel.Text = $"正在准备同步项目到 Git：{project.Name}";
         try
         {
             var preview = await _gitProjectSyncService.PrepareAsync(
@@ -120,6 +130,12 @@ public sealed partial class MainForm
         {
             ShowError("无法准备 Git 同步", exception);
         }
+        finally
+        {
+            _progressBar.MarqueeAnimationSpeed = 0;
+            _progressBar.Style = ProgressBarStyle.Blocks;
+            SetBusy(false);
+        }
     }
 
     private async Task SyncProjectToGitAsync(
@@ -129,7 +145,6 @@ public sealed partial class MainForm
         _scanCancellation?.Dispose();
         _scanCancellation = new CancellationTokenSource();
         var progress = new Progress<GitProjectSyncProgress>(UpdateGitSyncProgress);
-        SetBusy(true);
         _progressBar.MarqueeAnimationSpeed = 0;
         _progressBar.Style = ProgressBarStyle.Continuous;
         _progressBar.Minimum = 0;
@@ -175,10 +190,6 @@ public sealed partial class MainForm
                 $"ProfileId={preview.ProfileId:D}",
                 exception);
             ShowError("同步项目到 Git 失败", exception);
-        }
-        finally
-        {
-            SetBusy(false);
         }
     }
 

@@ -14,8 +14,7 @@ public sealed partial class MainForm
     private readonly ToolStripMenuItem _refreshAssetsMenuItem = new();
     private readonly ToolStripMenuItem _createProjectMenuItem = new();
     private readonly ToolStripMenuItem _fileSettingsMenuItem = new();
-    private readonly ToolStripMenuItem _backupDatabaseMenuItem = new();
-    private readonly ToolStripMenuItem _openDatabaseBackupDirectoryMenuItem = new();
+    private readonly ToolStripMenuItem _stateProtectionMenuItem = new();
     private readonly ToolStripMenuItem _settingsMenuItem = new();
     private readonly ToolStripMenuItem _mainAssetMenuItem = new();
     private readonly ToolStripMenuItem _checkForUpdatesMenuItem = new();
@@ -38,12 +37,9 @@ public sealed partial class MainForm
         openDataDirectoryItem.Click += (_, _) => OpenDirectoryPath(
             _dataDirectory,
             "无法打开数据目录");
-        _backupDatabaseMenuItem.Text = "立即备份数据库(&B)";
-        _backupDatabaseMenuItem.Click += async (_, _) =>
-            await CreateDatabaseBackupManuallyAsync();
-        _openDatabaseBackupDirectoryMenuItem.Text = "打开数据库备份目录";
-        _openDatabaseBackupDirectoryMenuItem.Click += async (_, _) =>
-            await OpenDatabaseBackupDirectoryAsync();
+        ConfigureStateProtectionMenuItem(_stateProtectionMenuItem);
+        _stateProtectionMenuItem.Click += async (_, _) =>
+            await OpenStateProtectionAsync();
         var exitItem = new ToolStripMenuItem("退出(&X)");
         exitItem.Click += (_, _) => Close();
         fileMenu.DropDownItems.AddRange(
@@ -54,8 +50,7 @@ public sealed partial class MainForm
                 _fileSettingsMenuItem,
                 openDataDirectoryItem,
                 new ToolStripSeparator(),
-                _backupDatabaseMenuItem,
-                _openDatabaseBackupDirectoryMenuItem,
+                _stateProtectionMenuItem,
                 new ToolStripSeparator(),
                 exitItem
             ]);
@@ -200,6 +195,14 @@ public sealed partial class MainForm
         ArgumentNullException.ThrowIfNull(menuItem);
         menuItem.ShortcutKeys = Keys.Control | Keys.Oemcomma;
         menuItem.ShortcutKeyDisplayString = "Ctrl + 逗号键";
+    }
+
+    internal static void ConfigureStateProtectionMenuItem(
+        ToolStripMenuItem menuItem)
+    {
+        ArgumentNullException.ThrowIfNull(menuItem);
+        menuItem.Text = "数据保护(&P)...";
+        menuItem.AccessibleName = "数据保护";
     }
 
     private void ConfigureMainAssetMenu()
@@ -452,8 +455,7 @@ public sealed partial class MainForm
         _refreshAssetsMenuItem.Enabled = !_isBusy;
         _createProjectMenuItem.Enabled = !_isBusy;
         _fileSettingsMenuItem.Enabled = !_isBusy;
-        _backupDatabaseMenuItem.Enabled = !_isBusy && !_databaseBackupInProgress;
-        _openDatabaseBackupDirectoryMenuItem.Enabled = !_databaseBackupInProgress;
+        _stateProtectionMenuItem.Enabled = !_isBusy && !_databaseBackupInProgress;
         _settingsMenuItem.Enabled = !_isBusy;
         _mainAssetMenuItem.Enabled = !_isBusy;
     }

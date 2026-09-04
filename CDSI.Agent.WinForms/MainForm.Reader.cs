@@ -6,6 +6,7 @@ namespace CDSI.Agent.WinForms;
 
 public sealed partial class MainForm
 {
+    private readonly StateDatabaseWriteGate _stateDatabaseWriteGate = new();
     private readonly ReaderApplicationService _readerService;
     private readonly TabPage _readerTabPage = new("RSS订阅");
     private readonly TreeView _readerSourceTree = new();
@@ -309,6 +310,7 @@ public sealed partial class MainForm
         }
         catch (Exception exception)
         {
+            _readerInitialized = false;
             _readerTabPage.Enabled = false;
             _readerSummaryLabel.Text = "RSS订阅初始化失败";
             _runtimeLog.WriteError("Reader 初始化失败", exception);
@@ -485,7 +487,12 @@ public sealed partial class MainForm
         _readerContentTextBox.Text = entry.Content ?? entry.Summary ?? "该条目没有提供正文或摘要。";
         if (markRead && !entry.IsRead)
         {
-            await _readerService.SetEntryReadAsync(entry.Id, true);
+            if (!await _stateDatabaseWriteGate.TryRunAsync(
+                    () => _readerService.SetEntryReadAsync(entry.Id, true)))
+            {
+                return;
+            }
+
             selected = item with { Entry = entry with { IsRead = true, ReadAt = DateTimeOffset.UtcNow } };
             _readerEntryGrid.CurrentRow.Tag = selected;
             _readerEntryGrid.CurrentRow.Cells["ReadStatus"].Value = "已读";
@@ -578,7 +585,12 @@ public sealed partial class MainForm
             return;
         }
 
-        await _readerService.DeleteFeedAsync(feed.Id);
+        if (!await _stateDatabaseWriteGate.TryRunAsync(
+                () => _readerService.DeleteFeedAsync(feed.Id)))
+        {
+            return;
+        }
+
         _statusLabel.Text = $"已移除订阅：{feed.Title}";
         await RefreshReaderAsync();
     }
@@ -590,7 +602,14 @@ public sealed partial class MainForm
             return;
         }
 
-        await _readerService.SetEntryReadAsync(item.Entry.Id, !item.Entry.IsRead);
+        if (!await _stateDatabaseWriteGate.TryRunAsync(
+                () => _readerService.SetEntryReadAsync(
+                    item.Entry.Id,
+                    !item.Entry.IsRead)))
+        {
+            return;
+        }
+
         await RefreshReaderEntriesAsync();
         await RefreshReaderFeedsOnlyAsync();
     }
@@ -602,7 +621,14 @@ public sealed partial class MainForm
             return;
         }
 
-        await _readerService.SetEntryStarredAsync(item.Entry.Id, !item.Entry.IsStarred);
+        if (!await _stateDatabaseWriteGate.TryRunAsync(
+                () => _readerService.SetEntryStarredAsync(
+                    item.Entry.Id,
+                    !item.Entry.IsStarred)))
+        {
+            return;
+        }
+
         await RefreshReaderEntriesAsync();
     }
 
@@ -725,7 +751,7 @@ public sealed partial class MainForm
         string currentItem,
         Func<CancellationToken, Task> operation)
     {
-        if (_isBusy)
+        if (_isBusy || _stateDatabaseWriteGate.IsSuspended)
         {
             return;
         }

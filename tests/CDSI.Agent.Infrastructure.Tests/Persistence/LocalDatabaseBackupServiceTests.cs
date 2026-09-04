@@ -1,5 +1,6 @@
 using System.Text.Json;
 using CDSI.Agent.Infrastructure.Persistence;
+using CDSI.Agent.Infrastructure.Reader;
 using Microsoft.Data.Sqlite;
 
 namespace CDSI.Agent.Infrastructure.Tests.Persistence;
@@ -90,6 +91,91 @@ public sealed class LocalDatabaseBackupServiceTests
         Assert.Empty(Directory.EnumerateFiles(backupDirectory, "cdsi-*.db"));
         Assert.Empty(Directory.EnumerateFiles(backupDirectory, "*.tmp*"));
 
+        SqliteConnection.ClearAllPools();
+    }
+
+    [Fact]
+    public async Task CreateSnapshotAsync_DoesNotReuseDamagedLatestSnapshot()
+    {
+        using var directory = new TestDirectory();
+        var databasePath = Path.Combine(directory.Path, "State", "cdsi.db");
+        var workspacePath = Path.Combine(directory.Path, "Workspace");
+        var repository = new SqliteAssetRepository(databasePath);
+        await repository.InitializeAsync();
+        var service = new LocalDatabaseBackupService(databasePath, "0.test");
+        var first = await service.CreateSnapshotAsync(workspacePath);
+        await File.WriteAllTextAsync(first.SnapshotPath, "damaged snapshot");
+
+        var replacement = await service.CreateSnapshotAsync(workspacePath);
+
+        Assert.True(replacement.Created);
+        Assert.NotEqual(first.SnapshotPath, replacement.SnapshotPath);
+        await using var connection = new SqliteConnection(
+            $"Data Source={replacement.SnapshotPath};Mode=ReadOnly;Pooling=False");
+        await connection.OpenAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = "PRAGMA integrity_check;";
+        Assert.Equal("ok", await command.ExecuteScalarAsync());
+        SqliteConnection.ClearAllPools();
+    }
+
+    [Fact]
+    public async Task CreateSnapshotAsync_DetectsChangesStoredOnlyInWal()
+    {
+        using var directory = new TestDirectory();
+        var databasePath = Path.Combine(directory.Path, "State", "reader.db");
+        var workspacePath = Path.Combine(directory.Path, "Workspace");
+        Directory.CreateDirectory(Path.GetDirectoryName(databasePath)!);
+        var connectionString = new SqliteConnectionStringBuilder
+        {
+            DataSource = databasePath,
+            Mode = SqliteOpenMode.ReadWriteCreate,
+            Pooling = false,
+            ForeignKeys = true
+        }.ToString();
+        await ReaderDatabaseMigrator.MigrateAsync(
+            connectionString,
+            CancellationToken.None);
+        await using var writer = new SqliteConnection(connectionString);
+        await writer.OpenAsync();
+        await using (var setup = writer.CreateCommand())
+        {
+            setup.CommandText =
+                """
+                PRAGMA wal_autocheckpoint = 0;
+                CREATE TABLE backup_wal_test(value TEXT NOT NULL);
+                INSERT INTO backup_wal_test(value) VALUES ('first');
+                """;
+            await setup.ExecuteNonQueryAsync();
+        }
+
+        var service = new LocalDatabaseBackupService(
+            databasePath,
+            "0.test",
+            "Reader");
+        var first = await service.CreateSnapshotAsync(workspacePath);
+        var sourceLength = new FileInfo(databasePath).Length;
+        var sourceWriteTime = File.GetLastWriteTimeUtc(databasePath);
+        await using (var update = writer.CreateCommand())
+        {
+            update.CommandText =
+                "INSERT INTO backup_wal_test(value) VALUES ('second');";
+            await update.ExecuteNonQueryAsync();
+        }
+
+        Assert.Equal(sourceLength, new FileInfo(databasePath).Length);
+        Assert.Equal(sourceWriteTime, File.GetLastWriteTimeUtc(databasePath));
+        var changed = await service.CreateSnapshotAsync(workspacePath);
+
+        Assert.True(first.Created);
+        Assert.True(changed.Created);
+        Assert.NotEqual(first.SnapshotPath, changed.SnapshotPath);
+        await using var snapshot = new SqliteConnection(
+            $"Data Source={changed.SnapshotPath};Mode=ReadOnly;Pooling=False");
+        await snapshot.OpenAsync();
+        await using var count = snapshot.CreateCommand();
+        count.CommandText = "SELECT COUNT(*) FROM backup_wal_test;";
+        Assert.Equal(2L, await count.ExecuteScalarAsync());
         SqliteConnection.ClearAllPools();
     }
 

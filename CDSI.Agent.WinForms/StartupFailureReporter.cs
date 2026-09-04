@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.RegularExpressions;
+using CDSI.Agent.Infrastructure.Persistence;
 
 namespace CDSI.Agent.WinForms;
 
@@ -48,10 +49,46 @@ internal static class StartupFailureReporter
             ? string.Empty
             : $"\n\n诊断日志：{logPath}";
         MessageBox.Show(
-            $"CDSI Beacon 启动失败。\n\n{RedactSensitiveText(exception.Message)}{logText}",
+            $"CDSI Beacon 启动失败。\n\n{CreateUserFacingMessage(exception)}{logText}",
             "CDSI Beacon",
             MessageBoxButtons.OK,
             MessageBoxIcon.Error);
+    }
+
+    internal static string CreateUserFacingMessage(Exception exception)
+    {
+        ArgumentNullException.ThrowIfNull(exception);
+        var reportableSafetyPath = exception is StateRestoreFailedException
+        {
+            SafetyBackupPath: { } path
+        }
+            ? NormalizeReportablePath(path)
+            : null;
+        var safetyBackupText =
+            reportableSafetyPath is not null
+                ? $"\n\n恢复前安全副本位置：\n{reportableSafetyPath}"
+                : string.Empty;
+        return RedactSensitiveText($"{exception.Message}{safetyBackupText}");
+    }
+
+    internal static string? NormalizeReportablePath(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return null;
+        }
+
+        try
+        {
+            return Path.GetFullPath(path);
+        }
+        catch (Exception exception) when (exception is ArgumentException or
+                                          NotSupportedException or
+                                          PathTooLongException or
+                                          System.Security.SecurityException)
+        {
+            return null;
+        }
     }
 
     internal static string RedactSensitiveText(string text)

@@ -11,8 +11,10 @@ public sealed partial class MainForm
     private const int DbtDeviceRemoveComplete = 0x8004;
 
     private readonly LocalVolumeReconciliationService _volumeReconciliationService;
+    private readonly SemaphoreSlim _volumeReconciliationGate = new(1, 1);
     private CancellationTokenSource? _volumeReconciliationCancellation;
     private bool _localVolumeMonitoringEnabled;
+    private bool _localVolumeReconciliationPaused;
 
     protected override void WndProc(ref Message message)
     {
@@ -48,6 +50,55 @@ public sealed partial class MainForm
         _volumeReconciliationCancellation?.Cancel();
         _volumeReconciliationCancellation?.Dispose();
         _volumeReconciliationCancellation = null;
+        ResumeLocalVolumeMonitoring(enableMonitoring: false);
+    }
+
+    private async Task<bool> PauseLocalVolumeMonitoringAsync()
+    {
+        var wasEnabled = _localVolumeMonitoringEnabled;
+        _localVolumeMonitoringEnabled = false;
+        var cancellation = _volumeReconciliationCancellation;
+        cancellation?.Cancel();
+
+        if (!_localVolumeReconciliationPaused)
+        {
+            await _volumeReconciliationGate.WaitAsync();
+            _localVolumeReconciliationPaused = true;
+        }
+
+        if (ReferenceEquals(_volumeReconciliationCancellation, cancellation))
+        {
+            cancellation?.Dispose();
+            _volumeReconciliationCancellation = null;
+        }
+
+        return wasEnabled;
+    }
+
+    private void ResumeLocalVolumeMonitoring(bool enableMonitoring)
+    {
+        if (_localVolumeReconciliationPaused)
+        {
+            _localVolumeReconciliationPaused = false;
+            _volumeReconciliationGate.Release();
+        }
+
+        _localVolumeMonitoringEnabled = enableMonitoring;
+    }
+
+    private async Task<LocalVolumeReconciliationResult> ReconcileLocalVolumesAsync(
+        CancellationToken cancellationToken = default)
+    {
+        await _volumeReconciliationGate.WaitAsync(cancellationToken);
+        try
+        {
+            return await _volumeReconciliationService.ReconcileAsync(
+                cancellationToken);
+        }
+        finally
+        {
+            _volumeReconciliationGate.Release();
+        }
     }
 
     private void ScheduleLocalVolumeReconciliation()
@@ -62,12 +113,20 @@ public sealed partial class MainForm
     private async Task ReconcileLocalVolumesAfterDelayAsync(
         CancellationToken cancellationToken)
     {
+        var gateEntered = false;
         try
         {
             await Task.Delay(TimeSpan.FromMilliseconds(750), cancellationToken);
             while (_isBusy)
             {
                 await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
+            }
+
+            await _volumeReconciliationGate.WaitAsync(cancellationToken);
+            gateEntered = true;
+            if (!_localVolumeMonitoringEnabled)
+            {
+                return;
             }
 
             var result = await _volumeReconciliationService.ReconcileAsync(
@@ -88,6 +147,13 @@ public sealed partial class MainForm
             if (!IsDisposed)
             {
                 _statusLabel.Text = $"移动设备状态更新失败：{exception.Message}";
+            }
+        }
+        finally
+        {
+            if (gateEntered)
+            {
+                _volumeReconciliationGate.Release();
             }
         }
     }

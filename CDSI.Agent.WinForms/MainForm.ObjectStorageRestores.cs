@@ -1,3 +1,4 @@
+using CDSI.Agent.Core.Assets;
 using CDSI.Agent.Core.Storage;
 
 namespace CDSI.Agent.WinForms;
@@ -16,6 +17,31 @@ public sealed partial class MainForm
         {
             return;
         }
+
+        if (!TryBeginStatefulOperation())
+        {
+            return;
+        }
+
+        try
+        {
+            await RestoreSelectedAssetsFromOssCoreAsync(selected);
+        }
+        finally
+        {
+            _progressBar.Style = ProgressBarStyle.Blocks;
+            SetBusy(false);
+        }
+    }
+
+    private async Task RestoreSelectedAssetsFromOssCoreAsync(
+        IReadOnlyList<AssetListItem> selected)
+    {
+        _progressBar.Style = ProgressBarStyle.Marquee;
+        _progressBar.MarqueeAnimationSpeed = 24;
+        _progressLabel.Text = "正在准备从 OSS 取回资产";
+        _currentPathLabel.Text = string.Empty;
+        _statusLabel.Text = "正在准备 OSS 取回";
 
         IReadOnlyList<ObjectStorageRestoreCandidate> candidates;
         try
@@ -77,7 +103,6 @@ public sealed partial class MainForm
         var restoreProgress = new Progress<ObjectStorageRestoreProgress>(
             UpdateRestoreProgress);
 
-        SetBusy(true);
         _progressBar.MarqueeAnimationSpeed = 0;
         _progressBar.Style = ProgressBarStyle.Continuous;
         _progressBar.Minimum = 0;
@@ -103,11 +128,6 @@ public sealed partial class MainForm
         {
             _statusLabel.Text = "OSS 取回失败";
             ShowError("OSS 取回未能完成", exception);
-        }
-        finally
-        {
-            _progressBar.Style = ProgressBarStyle.Blocks;
-            SetBusy(false);
         }
     }
 

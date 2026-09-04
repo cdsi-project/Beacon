@@ -4,6 +4,8 @@ namespace CDSI.Agent.Infrastructure.Persistence;
 
 internal static class DatabaseMigrator
 {
+    internal const int CurrentSchemaVersion = 28;
+
     public static async Task MigrateAsync(
         string connectionString,
         CancellationToken cancellationToken)
@@ -23,8 +25,14 @@ internal static class DatabaseMigrator
 
         await using var versionCommand = connection.CreateCommand();
         versionCommand.CommandText = "SELECT COALESCE(MAX(version), 0) FROM schema_migrations;";
-        var currentVersion = Convert.ToInt32(
+        var currentVersion = Convert.ToInt64(
             await versionCommand.ExecuteScalarAsync(cancellationToken));
+        if (currentVersion > CurrentSchemaVersion)
+        {
+            throw new InvalidOperationException(
+                $"资产数据库架构版本 {currentVersion} 高于当前 Beacon 支持的版本 " +
+                $"{CurrentSchemaVersion}，请升级 Beacon 后重试。");
+        }
 
         if (currentVersion < 1)
         {

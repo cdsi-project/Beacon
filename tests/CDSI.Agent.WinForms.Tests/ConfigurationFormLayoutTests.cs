@@ -48,7 +48,8 @@ public sealed class ConfigurationFormLayoutTests
                 new WindowsCredentialSecretStore()),
             new GitProfileService(
                 repository,
-                new WindowsCredentialSecretStore()));
+                new WindowsCredentialSecretStore()),
+            new StateDatabaseWriteGate());
         form.CreateControl();
 
         var tabs = Assert.Single(Descendants(form).OfType<TabControl>());
@@ -178,6 +179,70 @@ public sealed class ConfigurationFormLayoutTests
         Assert.False(startScanButton.Enabled);
         Assert.Equal(DialogResult.OK, startScanButton.DialogResult);
         Assert.Equal(DialogResult.Cancel, closeButton.DialogResult);
+    }
+
+    [Theory]
+    [InlineData(true, true)]
+    [InlineData(false, false)]
+    public void SettingsForm_CloseGuard_ProtectsOnlyAnActiveAsyncOperation(
+        bool asyncOperationInProgress,
+        bool expected)
+    {
+        Assert.Equal(
+            expected,
+            SettingsForm.ShouldCancelClose(asyncOperationInProgress));
+    }
+
+    [Fact]
+    public async Task SettingsForm_StateWriteOperation_HoldsTheSharedGateUntilCompletion()
+    {
+        var gate = new StateDatabaseWriteGate();
+        using var form = CreateSettingsForm(gate);
+        var operationStarted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseOperation = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var operation = form.TryRunStateDatabaseWriteAsync(async () =>
+        {
+            operationStarted.SetResult();
+            await releaseOperation.Task;
+        });
+        await operationStarted.Task;
+
+        var suspensionTask = gate.SuspendAsync();
+
+        Assert.True(form.AsyncOperationInProgress);
+        Assert.True(SettingsForm.ShouldCancelClose(form.AsyncOperationInProgress));
+        Assert.False(suspensionTask.IsCompleted);
+
+        releaseOperation.SetResult();
+        Assert.True(await operation);
+        Assert.False(form.AsyncOperationInProgress);
+        using var suspension = await suspensionTask;
+    }
+
+    [Fact]
+    public async Task SettingsForm_StateWriteOperation_RecoversBusyStateWhenRejectedOrFailed()
+    {
+        var gate = new StateDatabaseWriteGate();
+        using var form = CreateSettingsForm(gate);
+        using (await gate.SuspendAsync())
+        {
+            var invoked = false;
+            Assert.False(await form.TryRunStateDatabaseWriteAsync(() =>
+            {
+                invoked = true;
+                return Task.CompletedTask;
+            }));
+            Assert.False(invoked);
+            Assert.False(form.AsyncOperationInProgress);
+        }
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            form.TryRunStateDatabaseWriteAsync(() =>
+                throw new InvalidOperationException("write failed")));
+        Assert.False(form.AsyncOperationInProgress);
     }
 
     [Fact]
@@ -605,5 +670,26 @@ public sealed class ConfigurationFormLayoutTests
                 yield return descendant;
             }
         }
+    }
+
+    private static SettingsForm CreateSettingsForm(StateDatabaseWriteGate gate)
+    {
+        var repository = new SqliteAssetRepository(
+            Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.db"));
+        return new SettingsForm(
+            new WorkspaceApplicationService(
+                repository,
+                new WorkspaceProvisioner()),
+            new ScanRootManagementService(repository),
+            new ObjectStorageProfileService(
+                repository,
+                new WindowsCredentialSecretStore()),
+            new OpenWebSettingsService(
+                repository,
+                new WindowsCredentialSecretStore()),
+            new GitProfileService(
+                repository,
+                new WindowsCredentialSecretStore()),
+            gate);
     }
 }
