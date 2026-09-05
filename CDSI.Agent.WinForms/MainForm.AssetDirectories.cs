@@ -133,7 +133,7 @@ public sealed partial class MainForm
         ArgumentNullException.ThrowIfNull(openItem);
         ArgumentNullException.ThrowIfNull(removeItem);
         openItem.Text = "打开目录位置";
-        removeItem.Text = "移除";
+        removeItem.Text = "从扫描目录中移除";
         contextMenu.Items.Clear();
         contextMenu.Items.AddRange(
             [openItem, new ToolStripSeparator(), removeItem]);
@@ -233,7 +233,7 @@ public sealed partial class MainForm
             MessageBox.Show(
                 this,
                 CreateAssetDirectoryRemovalConfirmation(directory.Path),
-                "移除资产目录",
+                "从扫描目录中移除",
                 MessageBoxButtons.OKCancel,
                 MessageBoxIcon.Warning) != DialogResult.OK)
         {
@@ -246,11 +246,11 @@ public sealed partial class MainForm
             var result = await _scanRootService.ExcludeAssetDirectoryAsync(directory.Path);
             await RefreshAssetsAsync();
             _statusLabel.Text =
-                $"已移除资产目录，排除 {result.ExcludedLocationCount:N0} 个资产位置，本地文件未删除";
+                $"已从扫描目录中移除，排除 {result.ExcludedLocationCount:N0} 个资产位置，本地文件未删除";
         }
         catch (Exception exception)
         {
-            ShowError("无法移除资产目录", exception);
+            ShowError("无法从扫描目录中移除", exception);
         }
         finally
         {
@@ -261,7 +261,7 @@ public sealed partial class MainForm
     internal static string CreateAssetDirectoryRemovalConfirmation(string path)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
-        return $"移除后不再扫描，不计入资源清单。{Environment.NewLine}{Environment.NewLine}" +
+        return $"从扫描目录中移除后不再扫描，也不计入资源清单。{Environment.NewLine}{Environment.NewLine}" +
             $"{path}{Environment.NewLine}{Environment.NewLine}" +
             "不会删除、移动或修改目录中的本地文件。是否继续？";
     }

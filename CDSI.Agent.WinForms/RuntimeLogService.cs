@@ -5,13 +5,15 @@ namespace CDSI.Agent.WinForms;
 public sealed class RuntimeLogService
 {
     private readonly object _writeLock = new();
+    private string _logDirectory;
+    private string _currentLogPath;
 
     public RuntimeLogService(string dataDirectory)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(dataDirectory);
-        LogDirectory = Path.Combine(Path.GetFullPath(dataDirectory), "Logs");
-        CurrentLogPath = Path.Combine(
-            LogDirectory,
+        _logDirectory = Path.Combine(Path.GetFullPath(dataDirectory), "Logs");
+        _currentLogPath = Path.Combine(
+            _logDirectory,
             $"runtime-{DateTimeOffset.Now:yyyyMMdd-HHmmss-fff}.log");
 
         WriteInformation(
@@ -19,9 +21,72 @@ public sealed class RuntimeLogService
             $"OS={Environment.OSVersion}；Runtime={Environment.Version}");
     }
 
-    public string LogDirectory { get; }
+    public string LogDirectory
+    {
+        get
+        {
+            lock (_writeLock)
+            {
+                return _logDirectory;
+            }
+        }
+    }
 
-    public string CurrentLogPath { get; }
+    public string CurrentLogPath
+    {
+        get
+        {
+            lock (_writeLock)
+            {
+                return _currentLogPath;
+            }
+        }
+    }
+
+    public bool TryUseWorkspace(string workspacePath)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(workspacePath);
+        try
+        {
+            var targetDirectory = GetWorkspaceLogDirectory(workspacePath);
+            lock (_writeLock)
+            {
+                if (PathsEqual(_logDirectory, targetDirectory))
+                {
+                    return true;
+                }
+
+                Directory.CreateDirectory(targetDirectory);
+                var targetLogPath = CreateAvailableLogPath(
+                    targetDirectory,
+                    Path.GetFileName(_currentLogPath));
+                if (File.Exists(_currentLogPath))
+                {
+                    File.Copy(_currentLogPath, targetLogPath, overwrite: false);
+                }
+
+                _logDirectory = targetDirectory;
+                _currentLogPath = targetLogPath;
+            }
+
+            WriteInformation($"运行日志目录已切换到工作目录：{targetDirectory}");
+            return true;
+        }
+        catch (Exception exception)
+        {
+            WriteError("无法将运行日志目录切换到工作目录", exception);
+            return false;
+        }
+    }
+
+    public static string GetWorkspaceLogDirectory(string workspacePath)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(workspacePath);
+        return Path.Combine(
+            Path.GetFullPath(workspacePath),
+            "System",
+            "Logs");
+    }
 
     public void WriteInformation(string message)
     {
@@ -38,11 +103,12 @@ public sealed class RuntimeLogService
 
     public IReadOnlyList<string> GetLogFiles()
     {
+        var logDirectory = LogDirectory;
         try
         {
-            Directory.CreateDirectory(LogDirectory);
+            Directory.CreateDirectory(logDirectory);
             return Directory
-                .EnumerateFiles(LogDirectory, "*.log", SearchOption.TopDirectoryOnly)
+                .EnumerateFiles(logDirectory, "*.log", SearchOption.TopDirectoryOnly)
                 .OrderByDescending(File.GetLastWriteTimeUtc)
                 .ThenByDescending(Path.GetFileName, StringComparer.OrdinalIgnoreCase)
                 .ToArray();
@@ -56,8 +122,9 @@ public sealed class RuntimeLogService
     public string ReadLogFile(string logPath)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(logPath);
+        var logDirectory = LogDirectory;
         var fullPath = Path.GetFullPath(logPath);
-        var relativePath = Path.GetRelativePath(LogDirectory, fullPath);
+        var relativePath = Path.GetRelativePath(logDirectory, fullPath);
         if (Path.IsPathRooted(relativePath) ||
             relativePath.Equals("..", StringComparison.Ordinal) ||
             relativePath.StartsWith($"..{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
@@ -82,13 +149,45 @@ public sealed class RuntimeLogService
             var entry = $"{DateTimeOffset.Now:O} [{level}] {redacted}{Environment.NewLine}";
             lock (_writeLock)
             {
-                Directory.CreateDirectory(LogDirectory);
-                File.AppendAllText(CurrentLogPath, entry, Encoding.UTF8);
+                Directory.CreateDirectory(_logDirectory);
+                File.AppendAllText(_currentLogPath, entry, Encoding.UTF8);
             }
         }
         catch
         {
             // Logging must never prevent Beacon from starting or completing an operation.
         }
+    }
+
+    private static string CreateAvailableLogPath(
+        string logDirectory,
+        string filename)
+    {
+        var candidate = Path.Combine(logDirectory, filename);
+        if (!File.Exists(candidate))
+        {
+            return candidate;
+        }
+
+        var name = Path.GetFileNameWithoutExtension(filename);
+        var extension = Path.GetExtension(filename);
+        for (var suffix = 2; ; suffix++)
+        {
+            candidate = Path.Combine(logDirectory, $"{name}-{suffix}{extension}");
+            if (!File.Exists(candidate))
+            {
+                return candidate;
+            }
+        }
+    }
+
+    private static bool PathsEqual(string left, string right)
+    {
+        return string.Equals(
+            Path.TrimEndingDirectorySeparator(Path.GetFullPath(left)),
+            Path.TrimEndingDirectorySeparator(Path.GetFullPath(right)),
+            OperatingSystem.IsWindows()
+                ? StringComparison.OrdinalIgnoreCase
+                : StringComparison.Ordinal);
     }
 }

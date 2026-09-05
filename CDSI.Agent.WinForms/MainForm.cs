@@ -765,6 +765,7 @@ public sealed partial class MainForm : Form
                 workspace = setupResult.Workspace;
             }
 
+            _runtimeLog.TryUseWorkspace(workspace.Path);
             await TryCreateAutomaticDatabaseBackupAsync(workspace.Path);
 
             var volumeResult = await ReconcileLocalVolumesAsync();
@@ -813,6 +814,8 @@ public sealed partial class MainForm : Form
             _openWebSettingsService,
             _gitProfileService,
             _stateDatabaseWriteGate);
+        settingsForm.WorkspaceChanged += workspacePath =>
+            _runtimeLog.TryUseWorkspace(workspacePath);
         var settingsResult = settingsForm.ShowDialog(this);
         await ReconcileLocalVolumesAsync();
         await RefreshAssetCollectionsAsync();

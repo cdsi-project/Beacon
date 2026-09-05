@@ -525,7 +525,7 @@ Initial structure:
 %LOCALAPPDATA%\CDSI\
 ├── cdsi.db
 ├── config.json
-├── logs\
+├── logs\                  startup/emergency fallback only
 ├── cache\
 └── thumbnails\
 ```
@@ -537,6 +537,10 @@ Program Files
 repository directory
 application binary directory
 ```
+
+After the managed workspace is configured, normal runtime logs are written to
+`<CDSI workspace>\System\Logs\`. `%LOCALAPPDATA%\CDSI\Logs\` remains available only
+for startup diagnostics when the workspace cannot yet be resolved or accessed.
 
 ---
 

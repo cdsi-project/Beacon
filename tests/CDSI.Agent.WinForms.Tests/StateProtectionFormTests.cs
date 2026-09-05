@@ -170,15 +170,29 @@ public sealed class StateProtectionFormTests
     }
 
     [Fact]
-    public void StateProtectionMenuItem_HasOneClearFileMenuCommand()
+    public void StateProtectionMenuItem_IsPlacedInTheToolsMenu()
     {
+        using var toolsMenu = new ToolStripMenuItem("工具");
+        using var taskCenterItem = new ToolStripMenuItem("任务中心");
+        using var runtimeLogItem = new ToolStripMenuItem("运行日志");
         using var item = new ToolStripMenuItem();
 
         MainForm.ConfigureStateProtectionMenuItem(item);
+        MainForm.ConfigureToolsMenu(
+            toolsMenu,
+            taskCenterItem,
+            runtimeLogItem,
+            item);
 
         Assert.Equal("数据保护(&P)...", item.Text);
         Assert.Equal("数据保护", item.AccessibleName);
         Assert.Equal(Keys.None, item.ShortcutKeys);
+        Assert.Collection(
+            toolsMenu.DropDownItems.Cast<ToolStripItem>(),
+            menuItem => Assert.Same(taskCenterItem, menuItem),
+            menuItem => Assert.Same(runtimeLogItem, menuItem),
+            menuItem => Assert.IsType<ToolStripSeparator>(menuItem),
+            menuItem => Assert.Same(item, menuItem));
     }
 
     [Fact]

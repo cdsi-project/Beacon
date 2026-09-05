@@ -37,6 +37,8 @@ public sealed partial class SettingsForm : Form
 
     internal bool AsyncOperationInProgress => _asyncOperationInProgress;
 
+    internal event Action<string>? WorkspaceChanged;
+
     internal SettingsForm(
         WorkspaceApplicationService workspaceService,
         ScanRootManagementService scanRootService,
@@ -530,6 +532,7 @@ public sealed partial class SettingsForm : Form
 
     private async void WorkspaceSaveButton_Click(object? sender, EventArgs e)
     {
+        string? configuredWorkspacePath = null;
         try
         {
             if (!await TryRunStateDatabaseWriteAsync(async () =>
@@ -556,9 +559,15 @@ public sealed partial class SettingsForm : Form
                 _workspaceStatusLabel.Text = FormatWorkspaceStatus(
                     result.Workspace.Path,
                     result.Layout.InboxPath);
+                configuredWorkspacePath = result.Workspace.Path;
             }))
             {
                 return;
+            }
+
+            if (configuredWorkspacePath is not null)
+            {
+                WorkspaceChanged?.Invoke(configuredWorkspacePath);
             }
         }
         catch (Exception exception)

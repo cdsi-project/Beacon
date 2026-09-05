@@ -10,7 +10,7 @@ It runs on the creator's own device and is responsible for discovering, indexing
 
 The agent must be designed as a **local-first, privacy-conscious, non-destructive system**.
 
-In the target architecture, CDSI Server is the optional control plane, CDSI Beacon is the local execution plane, and cloud storage such as Aliyun OSS, AWS S3, Cloudflare R2, Tencent COS, MinIO, NAS, or local filesystem is the data/storage plane. The current v0.2.17 application operates without CDSI Server.
+In the target architecture, CDSI Server is the optional control plane, CDSI Beacon is the local execution plane, and cloud storage such as Aliyun OSS, AWS S3, Cloudflare R2, Tencent COS, MinIO, NAS, or local filesystem is the data/storage plane. The current v0.2.21 application operates without CDSI Server.
 
 ---
 
@@ -43,9 +43,9 @@ The agent should help answer questions such as:
 - Which files are likely source assets, drafts, finals, covers, subtitles, references, or derivatives?
 - Which assets are related even if they are stored in different folders?
 
-### 1.1 Current Repository Baseline (v0.2.17)
+### 1.1 Current Repository Baseline (v0.2.21)
 
-The current baseline is v0.2.17, a working Windows desktop application built with .NET 10, WinForms, and SQLite. Before planning or implementing a change, distinguish these implemented capabilities from future requirements:
+The current baseline is v0.2.21, a working Windows desktop application built with .NET 10, WinForms, and SQLite. Before planning or implementing a change, distinguish these implemented capabilities from future requirements:
 
 - local workspace and multiple read-only scan roots
 - per-root opt-in idle scan schedules with minute, hour, or day intervals; due work is deferred while Beacon is busy or a blocking modal window is open, while the Task Center remains available for live idle-scan progress and cancellation
@@ -58,7 +58,7 @@ The current baseline is v0.2.17, a working Windows desktop application built wit
 - verified multipart upload, restore, and explicit remote deletion
 - cloud-backup management grouped by project-name object-key prefix
 - OpenWeb publishing to multiple WordPress sites
-- local SQLite consistent snapshots, audit records, task progress, and run logs
+- local SQLite consistent snapshots, audit records, task progress, and runtime logs under the managed workspace's `System/Logs` directory, with `%LOCALAPPDATA%\CDSI\Logs` retained only as a startup/emergency fallback
 - a stable per-installation UUID stored outside SQLite and shown in the About panel
 - single-instance Windows desktop behavior
 - a multi-resolution Beacon application icon embedded in the Windows executable
@@ -70,7 +70,7 @@ The current baseline is v0.2.17, a working Windows desktop application built wit
 
 The current application does **not** connect to CDSI Server, use temporary server-issued credentials, run AI/embedding pipelines, extract document bodies in the background, or send telemetry. Startup update discovery performs a read-only request for Gitee's public `VERSION` file and sends no asset metadata, paths, configuration, credentials, or client ID. Reader requests go directly to a user-added source only while adding/importing a subscription or performing a manual refresh; there is no Reader scheduler yet. Saving a Git profile does not perform network activity; clone, commit, and push occur only after the user explicitly selects a project and repository and confirms synchronization. State Bundle v1 is a user-triggered, unencrypted local ZIP: Beacon creates one on the direct backup command and creates a mandatory pre-restore bundle as part of an explicitly confirmed healthy-state restore. It does not schedule State Bundles in the background, apply bundle retention, upload them to object storage, or restore them from the cloud.
 
-The cloud project model is transitional in v0.2.17: local projects have stable IDs, but remote objects still use `<project name>/<original filename>` and the cloud UI groups records by that prefix. Stable remote ProjectId manifests and cross-device project reconstruction are next-stage work, not existing behavior.
+The cloud project model is transitional in v0.2.21: local projects have stable IDs, but remote objects still use `<project name>/<original filename>` and the cloud UI groups records by that prefix. Stable remote ProjectId manifests and cross-device project reconstruction are next-stage work, not existing behavior.
 
 ---
 
@@ -1066,7 +1066,7 @@ scan pipeline without triggering uploads or other remote operations.
 Reader schema v1 stores normalized unique Feed URLs, one optional folder per Feed,
 stable per-Feed entry deduplication keys, source/state separation, conditional HTTP
 validators, bounded fetch logs, and an explicit private-network opt-in. Reader HTML
-must remain non-executable in the desktop UI; v0.2.17 renders only normalized plain
+must remain non-executable in the desktop UI; v0.2.21 renders only normalized plain
 text and does not load scripts, embedded resources, or remote images.
 
 State Bundle v1 is a separate portable recovery artifact under the managed workspace's
@@ -1210,6 +1210,11 @@ credential. Restore must not replace the installation's `client-identity.json`.
 ---
 
 ## 36. Logging
+
+Normal runtime logs belong under the active managed workspace's `System/Logs`
+directory. Before the workspace can be resolved, or when it is unavailable, Beacon
+may use `%LOCALAPPDATA%\CDSI\Logs` as a startup/emergency fallback. Changing the
+workspace must not move or delete logs in the previous workspace.
 
 Logs should help diagnose:
 

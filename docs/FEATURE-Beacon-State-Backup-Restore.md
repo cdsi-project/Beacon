@@ -8,9 +8,9 @@
 
 ---
 
-# 0. Current Implementation Status (Beacon v0.2.17)
+# 0. Current Implementation Status (Beacon v0.2.21)
 
-Beacon v0.2.17 implements the first local recovery milestone of this design.
+Beacon v0.2.21 implements the first local recovery milestone of this design.
 It is deliberately smaller than the complete provider-backed architecture described
 later in this document.
 
@@ -42,7 +42,7 @@ Beacon's existing automatic database snapshots remain enabled independently. Tho
 `System/DatabaseBackups`; they are not `.cdsibak` State Bundles and are not removed or
 replaced by this feature.
 
-In this document, **State Bundle v1** means the local v0.2.17 format. Sections that
+In this document, **State Bundle v1** means the local v0.2.21 format. Sections that
 describe encryption, cloud providers, remote retention, or automatic bundle creation
 are future architecture unless they explicitly say otherwise.
 
@@ -109,7 +109,7 @@ Cloud storage is used as backup, not as the authoritative database.
 
 # 3. Core Principle
 
-The following is the long-term provider-backed flow. Beacon v0.2.17 stops after the
+The following is the long-term provider-backed flow. Beacon v0.2.21 stops after the
 local versioned bundle and begins restore from a local file.
 
 ```text
@@ -150,7 +150,7 @@ Restore
 
 # 4. Scope
 
-## In Scope for State Bundle v1 / Beacon v0.2.17
+## In Scope for State Bundle v1 / Beacon v0.2.21
 
 - consistent snapshots of both Beacon SQLite databases
 - fixed State Bundle v1 format and compression
@@ -161,7 +161,7 @@ Restore
 - restart-bound replacement and rollback of the two-database state set
 - restore diagnostics that do not expose secrets
 
-## Explicitly Deferred Beyond v0.2.17
+## Explicitly Deferred Beyond v0.2.21
 
 - State Bundle encryption and recovery-key handling
 - upload to existing storage providers
@@ -377,7 +377,7 @@ Suggested initial schema:
   "format_version": 1,
   "backup_id": "d930f2b8-425d-4770-b45f-24bf36ea54d8",
   "created_at_utc": "2026-09-02T09:00:00Z",
-  "beacon_version": "0.2.17",
+  "beacon_version": "0.2.21",
   "source_client_id": "c90d475f-e6ba-42c7-af7a-f3e8c0f7f728",
   "platform": "Microsoft Windows ...",
   "architecture": "X64",
@@ -451,7 +451,7 @@ Correctness and portability are more important than optimization.
 
 ---
 
-# 13. Encryption (Future, Not in v0.2.17)
+# 13. Encryption (Future, Not in v0.2.21)
 
 State Bundle v1 local files are not encrypted. The Data Protection UI and README must
 state that a bundle contains private asset paths, configuration metadata, RSS content,
@@ -516,7 +516,7 @@ These do not all need to ship in the first encrypted milestone.
 
 # 15. Storage Provider Integration (Future)
 
-Beacon v0.2.17 does not upload or download State Bundles. When provider integration is
+Beacon v0.2.21 does not upload or download State Bundles. When provider integration is
 added, State Backup must reuse Beacon's provider abstraction.
 
 Initial compatible providers should include current Beacon storage providers where practical:
@@ -628,7 +628,7 @@ Debounce frequent changes.
 
 # 20. State Bundle Retention Policy (Future)
 
-Beacon v0.2.17 does not automatically delete `.cdsibak` files. Its existing individual
+Beacon v0.2.21 does not automatically delete `.cdsibak` files. Its existing individual
 database snapshots retain their separate recent/daily/monthly policy. A future State
 Bundle retention policy must not keep only one mutable backup.
 
@@ -672,7 +672,7 @@ Provide:
 Restore Beacon
 ```
 
-The v0.2.17 source is a local `.cdsibak` file. Configured cloud providers are not
+The v0.2.21 source is a local `.cdsibak` file. Configured cloud providers are not
 contacted by this workflow.
 
 Flow:
@@ -776,7 +776,7 @@ OPML is a fallback portability layer, not a replacement for State Backup.
 
 # 26. Data Protection UI
 
-Beacon v0.2.17 exposes a local Data Protection window from the File menu:
+Beacon v0.2.21 exposes a local Data Protection window from the Tools menu:
 
 ```text
 Data Protection
@@ -836,7 +836,7 @@ repositories initialize, the user must choose emergency restore, explicitly acce
 new empty database, or exit. An existing installation upgrading from a version that
 never used RSS can explicitly accept creation of an empty `reader.db`.
 
-v0.2.17 does not yet persist a separately acknowledged restore-outcome receipt. If
+v0.2.21 does not yet persist a separately acknowledged restore-outcome receipt. If
 the process is hard-terminated after a terminal restore state has been durably
 recorded and cleanup has completed, but before the result dialog is shown, the next
 startup will not replay that result notification. The database pair remains
@@ -861,7 +861,7 @@ This feature must pass the CDSI sovereignty test:
 
 > **If CDSI disappears tomorrow, can the user still recover Beacon state?**
 
-For the v0.2.17 local workflow, recovery is possible with:
+For the v0.2.21 local workflow, recovery is possible with:
 
 ```text
 Local .cdsibak file
@@ -971,7 +971,7 @@ Requirements:
 - use async I/O
 - show progress
 - keep cancellation in the service boundary for work that has not committed a pending
-  restore; the v0.2.17 Data Protection UI does not expose a cancel command
+  restore; the v0.2.21 Data Protection UI does not expose a cancel command
 - avoid loading entire bundle into memory unnecessarily
 - only one State Bundle or restore preparation pipeline per Beacon instance at a time
 
@@ -1031,7 +1031,7 @@ Minimum tests:
 - [ ] add fault-injection coverage proving a failed bundle build cannot publish its
   temporary archive as a final `.cdsibak`
 
-Provider and encryption tests are deferred because v0.2.17 performs no State Bundle
+Provider and encryption tests are deferred because v0.2.21 performs no State Bundle
 network transfer or encryption.
 
 ## Restore
@@ -1069,7 +1069,7 @@ network transfer or encryption.
 
 ---
 
-# 35. v0.2.17 Local Recovery Milestone
+# 35. v0.2.21 Local Recovery Milestone
 
 - [x] consistent snapshots of `cdsi.db` and `reader.db`
 - [x] `PRAGMA integrity_check` and `PRAGMA foreign_key_check`
@@ -1130,7 +1130,7 @@ The feature protects:
 
 ---
 
-# 39. v0.2.17 Acceptance Criteria
+# 39. v0.2.21 Acceptance Criteria
 
 The local recovery milestone is complete only when this scenario works:
 
@@ -1183,7 +1183,7 @@ must leave current state untouched.
 # 40. Final Architecture
 
 ```text
-              CDSI Beacon v0.2.17
+              CDSI Beacon v0.2.21
 
              ┌───────────┴───────────┐
              │                       │
@@ -1209,7 +1209,7 @@ Core rule:
 
 > **Local-first does not mean single-copy.**
 
-Beacon remains local-first. v0.2.17 supplies the portable local recovery unit; users
+Beacon remains local-first. v0.2.21 supplies the portable local recovery unit; users
 must export it to another physical destination to protect against loss of the disk
 that contains both the database and managed workspace. Encrypted provider-backed
 copies are a later milestone.

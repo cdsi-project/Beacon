@@ -7,6 +7,8 @@ namespace CDSI.Agent.WinForms;
 
 public sealed partial class MainForm
 {
+    internal const string AssetListRemovalMenuText = "移除当前记录（不删除文件）";
+
     private readonly ToolStripMenuItem _openFileLocationMenuItem = new();
     private readonly ToolStripMenuItem _openAssetProjectMenuItem = new();
     private readonly ToolStripMenuItem _showAssetDetailsMenuItem = new();
@@ -28,7 +30,7 @@ public sealed partial class MainForm
         _backupToOssMenuItem.Text = "同步到 OSS";
         _restoreFromOssMenuItem.Text = "从 OSS 取回";
         _publishToOpenWebMenuItem.Text = "发布到 OpenWeb";
-        _hideAssetsFromListMenuItem.Text = "从资产列表中移除（不删除）";
+        _hideAssetsFromListMenuItem.Text = AssetListRemovalMenuText;
         _openFileLocationMenuItem.Click += (_, _) => OpenCurrentAssetFileLocation();
         _openAssetProjectMenuItem.Click += async (_, _) =>
             await OpenCurrentAssetProjectAsync();
@@ -94,8 +96,7 @@ public sealed partial class MainForm
                 $"移动到 CDSI 工作目录 ({selected.Count:N0})";
             _restoreFromOssMenuItem.Text =
                 $"从 OSS 取回 ({selected.Count:N0})";
-            _hideAssetsFromListMenuItem.Text =
-                $"从资产列表中移除（不删除，{selected.Count:N0} 个）";
+            _hideAssetsFromListMenuItem.Text = AssetListRemovalMenuText;
         };
         _assetGrid.ContextMenuStrip = _assetContextMenu;
         _assetGrid.CellMouseDown += AssetGrid_CellMouseDown;
@@ -293,7 +294,7 @@ public sealed partial class MainForm
             MessageBox.Show(
                 this,
                 CreateAssetListRemovalConfirmation(selected),
-                "从资产列表中移除",
+                "移除当前记录",
                 MessageBoxButtons.OKCancel,
                 MessageBoxIcon.Question) != DialogResult.OK)
         {
@@ -308,7 +309,7 @@ public sealed partial class MainForm
                     selected.Select(asset => asset.AssetId).Distinct().ToArray());
                 await RefreshAssetPageAsync();
                 _statusLabel.Text =
-                    $"已从资产列表移除 {hidden:N0} 个资产，本地文件未删除";
+                    $"已移除 {hidden:N0} 条记录，本地文件未删除";
             }))
             {
                 return;
@@ -316,7 +317,7 @@ public sealed partial class MainForm
         }
         catch (Exception exception)
         {
-            ShowError("无法从资产列表移除", exception);
+            ShowError("无法移除当前记录", exception);
         }
     }
 
@@ -336,7 +337,7 @@ public sealed partial class MainForm
         var remainingText = remaining > 0
             ? $"{Environment.NewLine}……另有 {remaining:N0} 个"
             : string.Empty;
-        return $"确定从资产列表中移除以下资产吗？{Environment.NewLine}{Environment.NewLine}{preview}{remainingText}{Environment.NewLine}{Environment.NewLine}本地文件、资产记录、OSS 备份和资产清单都不会被删除。";
+        return $"确定移除以下记录吗？{Environment.NewLine}{Environment.NewLine}{preview}{remainingText}{Environment.NewLine}{Environment.NewLine}此操作仅将所选资产从“全部资产”列表隐藏；本地文件、资产索引记录、云端备份和项目成员关系都不会被删除。";
     }
 
     private async Task TransferSelectedAssetsAsync(

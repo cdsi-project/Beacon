@@ -1211,7 +1211,7 @@ public sealed class MainFormLayoutTests
     }
 
     [Fact]
-    public void CreateAssetListRemovalConfirmation_StatesThatFilesAreNotDeleted()
+    public void CreateAssetListRemovalConfirmation_ExplainsThatOnlyListVisibilityChanges()
     {
         var asset = new AssetListItem(
             Guid.NewGuid(),
@@ -1230,8 +1230,13 @@ public sealed class MainFormLayoutTests
 
         var message = MainForm.CreateAssetListRemovalConfirmation([asset]);
 
+        Assert.Equal("移除当前记录（不删除文件）", MainForm.AssetListRemovalMenuText);
+        Assert.Contains("确定移除以下记录", message);
         Assert.Contains("creator-video.mp4", message);
+        Assert.Contains("“全部资产”列表隐藏", message);
         Assert.Contains("本地文件", message);
+        Assert.Contains("资产索引记录", message);
+        Assert.Contains("项目成员关系", message);
         Assert.Contains("不会被删除", message);
         Assert.Throws<ArgumentException>(() =>
             MainForm.CreateAssetListRemovalConfirmation([]));
@@ -1511,7 +1516,7 @@ public sealed class MainFormLayoutTests
         Assert.IsType<ToolStripSeparator>(contextMenu.Items[1]);
         Assert.Same(removeItem, contextMenu.Items[2]);
         Assert.Equal("打开目录位置", openItem.Text);
-        Assert.Equal("移除", removeItem.Text);
+        Assert.Equal("从扫描目录中移除", removeItem.Text);
     }
 
     [Fact]
@@ -1521,7 +1526,7 @@ public sealed class MainFormLayoutTests
 
         var message = MainForm.CreateAssetDirectoryRemovalConfirmation(path);
 
-        Assert.Contains("移除后不再扫描，不计入资源清单", message);
+        Assert.Contains("从扫描目录中移除后不再扫描，也不计入资源清单", message);
         Assert.Contains(path, message);
         Assert.Contains("不会删除、移动或修改", message);
     }

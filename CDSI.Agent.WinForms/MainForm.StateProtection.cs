@@ -372,7 +372,7 @@ public sealed partial class MainForm
         ArgumentNullException.ThrowIfNull(result);
         var outcome = initializationSucceeded
             ? $"Beacon 状态已恢复到 {result.BackupCreatedAtUtc.ToLocalTime():yyyy-MM-dd HH:mm:ss}。"
-            : "状态数据库已经替换，但 Beacon 主窗口初始化仍然失败。应用尚未恢复到可正常使用状态，请查看运行日志，或从“文件 > 数据保护”选择另一份状态备份紧急恢复。";
+            : "状态数据库已经替换，但 Beacon 主窗口初始化仍然失败。应用尚未恢复到可正常使用状态，请查看运行日志，或从“工具 > 数据保护”选择另一份状态备份紧急恢复。";
         return
             $"{outcome}\n\n" +
             "已恢复资产数据库和 RSS订阅数据库。本地素材文件、云端对象和当前客户端 ID 未更改。\n\n" +
@@ -389,7 +389,7 @@ public sealed partial class MainForm
         ArgumentException.ThrowIfNullOrWhiteSpace(warning);
         var initializationNotice = initializationSucceeded
             ? string.Empty
-            : "\n\nBeacon 主窗口初始化也未完成，请从“文件 > 数据保护”选择一份状态备份紧急恢复。";
+            : "\n\nBeacon 主窗口初始化也未完成，请从“工具 > 数据保护”选择一份状态备份紧急恢复。";
         var reportableSafetyPath =
             StartupFailureReporter.NormalizeReportablePath(safetyBackupPath);
         var safetyNotice = reportableSafetyPath is null

@@ -99,6 +99,9 @@ D:\CDSI\
 ├── Cache\
 ├── Temp\
 └── System\
+    ├── DatabaseBackups\
+    ├── StateBackups\
+    └── Logs\
 ```
 
 Optional future directory:

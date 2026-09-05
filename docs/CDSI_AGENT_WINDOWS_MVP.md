@@ -739,7 +739,7 @@ Example:
 %LOCALAPPDATA%\CDSI\
 ├── cdsi.db
 ├── config.json
-├── logs\
+├── logs\                  startup/emergency fallback only
 ├── cache\
 └── thumbnails\
 ```
@@ -1290,11 +1290,14 @@ Recommended:
 Serilog
 ```
 
-Logs:
+Normal runtime logs:
 
 ```text
-%LOCALAPPDATA%\CDSI\logs\
+<CDSI workspace>\System\Logs\
 ```
+
+Before the workspace can be resolved, or when it is unavailable, startup diagnostics
+fall back to `%LOCALAPPDATA%\CDSI\Logs\`.
 
 Log:
 

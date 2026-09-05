@@ -50,8 +50,6 @@ public sealed partial class MainForm
                 _fileSettingsMenuItem,
                 openDataDirectoryItem,
                 new ToolStripSeparator(),
-                _stateProtectionMenuItem,
-                new ToolStripSeparator(),
                 exitItem
             ]);
         fileMenu.DropDownOpening += (_, _) => UpdateMainMenuState();
@@ -115,7 +113,11 @@ public sealed partial class MainForm
         taskCenterItem.Click += (_, _) => ShowTaskCenter();
         var runtimeLogItem = new ToolStripMenuItem("运行日志(&L)");
         runtimeLogItem.Click += (_, _) => ShowRuntimeLog();
-        toolsMenu.DropDownItems.AddRange([taskCenterItem, runtimeLogItem]);
+        ConfigureToolsMenu(
+            toolsMenu,
+            taskCenterItem,
+            runtimeLogItem,
+            _stateProtectionMenuItem);
         toolsMenu.DropDownOpening += (_, _) => UpdateMainMenuState();
 
         _settingsMenuItem.Text = "设置(&O)";
@@ -205,6 +207,26 @@ public sealed partial class MainForm
         menuItem.AccessibleName = "数据保护";
     }
 
+    internal static void ConfigureToolsMenu(
+        ToolStripMenuItem toolsMenu,
+        ToolStripMenuItem taskCenterItem,
+        ToolStripMenuItem runtimeLogItem,
+        ToolStripMenuItem stateProtectionItem)
+    {
+        ArgumentNullException.ThrowIfNull(toolsMenu);
+        ArgumentNullException.ThrowIfNull(taskCenterItem);
+        ArgumentNullException.ThrowIfNull(runtimeLogItem);
+        ArgumentNullException.ThrowIfNull(stateProtectionItem);
+        toolsMenu.DropDownItems.Clear();
+        toolsMenu.DropDownItems.AddRange(
+            [
+                taskCenterItem,
+                runtimeLogItem,
+                new ToolStripSeparator(),
+                stateProtectionItem
+            ]);
+    }
+
     private void ConfigureMainAssetMenu()
     {
         _mainAssetMenuItem.Text = "资产(&A)";
@@ -248,7 +270,7 @@ public sealed partial class MainForm
         backupItem.Click += async (_, _) => await SyncSelectedAssetsToProjectAsync();
         var restoreItem = new ToolStripMenuItem("从 OSS 取回(&R)");
         restoreItem.Click += async (_, _) => await RestoreSelectedAssetsFromOssAsync();
-        var hideItem = new ToolStripMenuItem("从资产列表中移除（不删除）(&H)")
+        var hideItem = new ToolStripMenuItem($"{AssetListRemovalMenuText}(&H)")
         {
             ShortcutKeyDisplayString = "Delete"
         };

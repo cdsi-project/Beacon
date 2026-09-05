@@ -52,6 +52,80 @@ public sealed class RuntimeLogServiceTests
     }
 
     [Fact]
+    public void TryUseWorkspace_CopiesCurrentSessionAndContinuesUnderSystemLogs()
+    {
+        var testRoot = CreateTestRoot();
+        try
+        {
+            var fallbackRoot = Path.Combine(testRoot, "fallback");
+            var workspaceRoot = Path.Combine(testRoot, "workspace");
+            var service = new RuntimeLogService(fallbackRoot);
+            service.WriteInformation("before workspace switch");
+            var fallbackLogPath = service.CurrentLogPath;
+
+            var switched = service.TryUseWorkspace(workspaceRoot);
+            var workspaceLogPath = service.CurrentLogPath;
+            service.WriteInformation("after workspace switch");
+
+            Assert.True(switched);
+            Assert.Equal(
+                Path.Combine(
+                    Path.GetFullPath(workspaceRoot),
+                    "System",
+                    "Logs"),
+                service.LogDirectory);
+            Assert.NotEqual(fallbackLogPath, workspaceLogPath);
+            Assert.True(File.Exists(fallbackLogPath));
+            Assert.Contains(
+                "before workspace switch",
+                service.ReadLogFile(workspaceLogPath));
+            Assert.Contains(
+                "after workspace switch",
+                service.ReadLogFile(workspaceLogPath));
+            Assert.DoesNotContain(
+                "after workspace switch",
+                File.ReadAllText(fallbackLogPath));
+
+            Assert.True(service.TryUseWorkspace(workspaceRoot));
+            Assert.Equal(workspaceLogPath, service.CurrentLogPath);
+        }
+        finally
+        {
+            Directory.Delete(testRoot, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void TryUseWorkspace_WhenTargetIsUnavailable_KeepsFallbackLogActive()
+    {
+        var testRoot = CreateTestRoot();
+        try
+        {
+            var fallbackRoot = Path.Combine(testRoot, "fallback");
+            var workspaceRoot = Path.Combine(testRoot, "workspace");
+            Directory.CreateDirectory(workspaceRoot);
+            File.WriteAllText(Path.Combine(workspaceRoot, "System"), "blocking file");
+            var service = new RuntimeLogService(fallbackRoot);
+            var fallbackDirectory = service.LogDirectory;
+            var fallbackLogPath = service.CurrentLogPath;
+
+            var switched = service.TryUseWorkspace(workspaceRoot);
+            service.WriteInformation("fallback remains active");
+
+            Assert.False(switched);
+            Assert.Equal(fallbackDirectory, service.LogDirectory);
+            Assert.Equal(fallbackLogPath, service.CurrentLogPath);
+            Assert.Contains(
+                "fallback remains active",
+                service.ReadLogFile(fallbackLogPath));
+        }
+        finally
+        {
+            Directory.Delete(testRoot, recursive: true);
+        }
+    }
+
+    [Fact]
     public void ReadLogFile_RejectsFilesOutsideLogDirectory()
     {
         var testRoot = CreateTestRoot();
@@ -60,6 +134,7 @@ public sealed class RuntimeLogServiceTests
             var service = new RuntimeLogService(testRoot);
             var outsidePath = Path.Combine(testRoot, "outside.log");
             File.WriteAllText(outsidePath, "outside");
+            Assert.True(service.TryUseWorkspace(Path.Combine(testRoot, "workspace")));
 
             Assert.Throws<InvalidOperationException>(
                 () => service.ReadLogFile(outsidePath));
