@@ -246,6 +246,60 @@ public sealed class ConfigurationFormLayoutTests
     }
 
     [Fact]
+    public async Task BackupSetup_RequiresSavedCredentialsAndKeepsScanningOutOfThePendingBackup()
+    {
+        using var form = CreateSettingsForm(
+            new StateDatabaseWriteGate(),
+            SettingsPage.BackupProfiles,
+            backupSetupOnly: true);
+        form.CreateControl();
+        var tabs = Assert.Single(Descendants(form).OfType<TabControl>());
+        var continueButton = Assert.Single(Descendants(form).OfType<Button>(),
+            button => button.Text == "继续备份");
+        var cancelButton = Assert.Single(Descendants(form).OfType<Button>(),
+            button => button.Text == "取消本次备份");
+        var storageGrid = Assert.Single(Descendants(form).OfType<DataGridView>(),
+            grid => grid.AccessibleName == "备份配置列表");
+
+        Assert.Equal("备份配置", tabs.SelectedTab!.Text);
+        Assert.All(tabs.TabPages.Cast<TabPage>().Where(page => page != tabs.SelectedTab),
+            page => Assert.False(page.Enabled));
+        Assert.DoesNotContain(Descendants(form).OfType<Button>(),
+            button => button.Text == "开始扫描");
+        Assert.Equal(DialogResult.OK, continueButton.DialogResult);
+        Assert.Equal(DialogResult.Cancel, cancelButton.DialogResult);
+        Assert.Same(cancelButton, form.CancelButton);
+        Assert.False(continueButton.Enabled);
+
+        var now = DateTimeOffset.UtcNow;
+        var profile = new ConfiguredObjectStorageProfile(new ObjectStorageProfile(
+            Guid.NewGuid(), "测试备份", ObjectStorageProvider.AliyunOss,
+            "oss-cn-beijing.aliyuncs.com", "test-bucket", null, true,
+            "test-key", now, now), HasStoredSecret: false);
+        await form.TryRunStateDatabaseWriteAsync(() =>
+        {
+            var row = storageGrid.Rows.Add("阿里云 OSS", "测试备份", "endpoint", "test-bucket", "", "缺失");
+            storageGrid.Rows[row].Tag = profile;
+            return Task.CompletedTask;
+        });
+        Assert.False(continueButton.Enabled);
+
+        await form.TryRunStateDatabaseWriteAsync(() =>
+        {
+            storageGrid.Rows[0].Tag = profile with { HasStoredSecret = true };
+            return Task.CompletedTask;
+        });
+        Assert.True(continueButton.Enabled);
+
+        await form.TryRunStateDatabaseWriteAsync(() =>
+        {
+            storageGrid.Rows.Clear();
+            return Task.CompletedTask;
+        });
+        Assert.False(continueButton.Enabled);
+    }
+
+    [Fact]
     public void ScanRootDialog_DefaultsToAllFileTypesWithoutOverlappingControls()
     {
         using var dialog = new ScanRootDialog(Path.GetTempPath());
@@ -672,7 +726,10 @@ public sealed class ConfigurationFormLayoutTests
         }
     }
 
-    private static SettingsForm CreateSettingsForm(StateDatabaseWriteGate gate)
+    private static SettingsForm CreateSettingsForm(
+        StateDatabaseWriteGate gate,
+        SettingsPage initialPage = SettingsPage.Workspace,
+        bool backupSetupOnly = false)
     {
         var repository = new SqliteAssetRepository(
             Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.db"));
@@ -690,6 +747,8 @@ public sealed class ConfigurationFormLayoutTests
             new GitProfileService(
                 repository,
                 new WindowsCredentialSecretStore()),
-            gate);
+            gate,
+            initialPage,
+            backupSetupOnly);
     }
 }

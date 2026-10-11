@@ -30,6 +30,23 @@ public sealed partial class MainForm
 
     internal static TableLayoutPanel CreateAssetOnboardingPanel(Button setupButton)
     {
+        var panel = CreateOnboardingPanel(
+            setupButton,
+            "开始扫描并登记资产",
+            "先选择素材所在目录和扫描类型，再点击“开始扫描”。",
+            "设置扫描目录",
+            "资产扫描引导");
+        setupButton.AccessibleName = "设置扫描目录并开始登记资产";
+        return panel;
+    }
+
+    private static TableLayoutPanel CreateOnboardingPanel(
+        Button actionButton,
+        string title,
+        string description,
+        string actionText,
+        string accessibleName)
+    {
         var panel = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
@@ -37,7 +54,7 @@ public sealed partial class MainForm
             RowCount = 3,
             Margin = Padding.Empty,
             BackColor = Color.White,
-            AccessibleName = "资产扫描引导"
+            AccessibleName = accessibleName
         };
         panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         panel.RowStyles.Add(new RowStyle(SizeType.Percent, 50));
@@ -63,7 +80,7 @@ public sealed partial class MainForm
         {
             AutoSize = true,
             Anchor = AnchorStyles.None,
-            Text = "开始扫描并登记资产",
+            Text = title,
             Font = new Font("Segoe UI Semibold", 16F),
             ForeColor = Color.FromArgb(31, 37, 43),
             Margin = new Padding(0, 0, 0, 12)
@@ -72,24 +89,26 @@ public sealed partial class MainForm
         {
             AutoSize = true,
             Anchor = AnchorStyles.None,
-            Text = "先选择素材所在目录和扫描类型，再点击“开始扫描”。",
+            Text = description,
+            TextAlign = ContentAlignment.MiddleCenter,
+            MaximumSize = new Size(640, 0),
             ForeColor = Color.FromArgb(88, 98, 106),
             Margin = new Padding(0, 0, 0, 20)
         }, 0, 1);
-        setupButton.Text = "设置扫描目录";
-        setupButton.AccessibleName = "设置扫描目录并开始登记资产";
-        setupButton.AutoSize = true;
-        setupButton.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-        setupButton.Anchor = AnchorStyles.None;
-        setupButton.Padding = new Padding(22, 10, 22, 10);
-        setupButton.Margin = Padding.Empty;
-        setupButton.FlatStyle = FlatStyle.Flat;
-        setupButton.FlatAppearance.BorderSize = 0;
-        setupButton.BackColor = Color.FromArgb(24, 121, 78);
-        setupButton.ForeColor = Color.White;
-        setupButton.Cursor = Cursors.Hand;
-        setupButton.Enabled = false;
-        content.Controls.Add(setupButton, 0, 2);
+        actionButton.Text = actionText;
+        actionButton.AccessibleName = actionText;
+        actionButton.AutoSize = true;
+        actionButton.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+        actionButton.Anchor = AnchorStyles.None;
+        actionButton.Padding = new Padding(22, 10, 22, 10);
+        actionButton.Margin = Padding.Empty;
+        actionButton.FlatStyle = FlatStyle.Flat;
+        actionButton.FlatAppearance.BorderSize = 0;
+        actionButton.BackColor = Color.FromArgb(24, 121, 78);
+        actionButton.ForeColor = Color.White;
+        actionButton.Cursor = Cursors.Hand;
+        actionButton.Enabled = false;
+        content.Controls.Add(actionButton, 0, 2);
         panel.Controls.Add(content, 0, 1);
         return panel;
     }

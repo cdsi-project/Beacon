@@ -188,7 +188,7 @@ public sealed partial class MainForm
         if (remaining > 0)
         {
             details +=
-                $"{Environment.NewLine}{Environment.NewLine}另有 {remaining:N0} 个错误，详情已写入本地取回审计。";
+                $"{Environment.NewLine}{Environment.NewLine}另有 {remaining:N0} 项取回未完成，详情已写入本地取回审计。";
         }
 
         MessageBox.Show(

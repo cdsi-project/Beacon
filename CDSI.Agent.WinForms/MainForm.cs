@@ -824,7 +824,7 @@ public sealed partial class MainForm : Form
             _openWebSettingsService,
             _gitProfileService,
             _stateDatabaseWriteGate,
-            openScanRoots);
+            openScanRoots ? SettingsPage.ScanRoots : SettingsPage.Workspace);
         if (_workspaceDataDirectoryService is not null)
         {
             settingsForm.WorkspaceSwitchRequested = SwitchWorkspaceDataAsync;
@@ -935,7 +935,7 @@ public sealed partial class MainForm : Form
             _statusLabel.Text = FormatScanTaskStatus(
                 isIdleScan,
                 isInitialScan,
-                "正在提取元数据");
+                "正在读取媒体信息");
 
             var metadataSummary = await Task.Run(
                 () => _metadataService.ProcessPendingAsync(
@@ -949,7 +949,7 @@ public sealed partial class MainForm : Form
                 _statusLabel.Text = FormatScanTaskStatus(
                     isIdleScan,
                     isInitialScan,
-                    $"元数据提取已取消，已完成 {metadataSummary.ExtractedFiles:N0} 个文件");
+                    $"媒体信息读取已取消，已读取 {metadataSummary.ExtractedFiles:N0} 个文件");
                 return;
             }
 
@@ -982,7 +982,7 @@ public sealed partial class MainForm : Form
                 : FormatScanTaskStatus(
                     isIdleScan,
                     isInitialScan,
-                    $"完成，目录 {scanSummary.RootsScanned:N0}/{scanSummary.RootsConfigured:N0}，已索引 {scanSummary.FilesIndexed:N0} 个文件，元数据 {metadataSummary.ExtractedFiles:N0}，哈希 {fingerprintSummary.FingerprintedFiles:N0}");
+                    $"完成，目录 {scanSummary.RootsScanned:N0}/{scanSummary.RootsConfigured:N0}，已索引 {scanSummary.FilesIndexed:N0} 个文件，媒体信息 {metadataSummary.ExtractedFiles:N0}，哈希 {fingerprintSummary.FingerprintedFiles:N0}");
         }
         catch (OperationCanceledException)
         {
@@ -1031,7 +1031,7 @@ public sealed partial class MainForm : Form
     private void UpdateScanProgress(ScanProgress progress)
     {
         _progressLabel.Text =
-            $"发现 {progress.FilesDiscovered:N0}  ·  已索引 {progress.FilesIndexed:N0}  ·  错误 {progress.Errors:N0}";
+            $"发现 {progress.FilesDiscovered:N0}  ·  已索引 {progress.FilesIndexed:N0}  ·  读取或登记失败 {progress.Errors:N0}";
         _currentPathLabel.Text = progress.CurrentPath ?? progress.Message ?? string.Empty;
 
         if (progress.Stage == ScanStage.Failed)
@@ -1043,7 +1043,7 @@ public sealed partial class MainForm : Form
     private void UpdateMetadataProgress(MetadataProgress progress)
     {
         _progressLabel.Text =
-            $"元数据 {progress.CompletedFiles:N0}/{progress.TotalFiles:N0}  ·  已提取 {progress.ExtractedFiles:N0}  ·  不支持 {progress.UnsupportedFiles:N0}  ·  错误 {progress.Errors:N0}";
+            $"媒体信息 {progress.CompletedFiles:N0}/{progress.TotalFiles:N0}  ·  已读取 {progress.ExtractedFiles:N0}  ·  仅基本信息 {progress.UnsupportedFiles:N0}  ·  媒体信息读取失败 {progress.Errors:N0}";
         _currentPathLabel.Text = progress.Message ?? progress.CurrentPath ?? string.Empty;
 
         _progressBar.Value = progress.TotalFiles == 0
@@ -1060,7 +1060,7 @@ public sealed partial class MainForm : Form
             ? "完整校验"
             : "重复候选";
         _progressLabel.Text =
-            $"{modeText} {progress.CompletedFiles:N0}/{progress.TotalFiles:N0}  ·  已哈希 {progress.FingerprintedFiles:N0}  ·  {FormatFileSize(progress.ProcessedBytes)}/{FormatFileSize(progress.TotalBytes)}  ·  {FormatFileSize((long)progress.BytesPerSecond)}/s  ·  错误 {progress.Errors:N0}";
+            $"{modeText} {progress.CompletedFiles:N0}/{progress.TotalFiles:N0}  ·  已哈希 {progress.FingerprintedFiles:N0}  ·  {FormatFileSize(progress.ProcessedBytes)}/{FormatFileSize(progress.TotalBytes)}  ·  {FormatFileSize((long)progress.BytesPerSecond)}/s  ·  校验值计算失败 {progress.Errors:N0}";
         _currentPathLabel.Text = progress.Message ?? progress.CurrentPath ?? string.Empty;
 
         _progressBar.Value = progress.TotalBytes == 0
@@ -1342,7 +1342,7 @@ public sealed partial class MainForm : Form
         {
             AssetStatus.Indexed => "已索引",
             AssetStatus.Discovered => "已发现",
-            AssetStatus.Error => "错误",
+            AssetStatus.Error => "资产处理未完成",
             _ => asset.Status.ToString()
         };
     }
@@ -1363,23 +1363,23 @@ public sealed partial class MainForm : Form
     {
         if (metadata is null)
         {
-            return "待提取";
+            return "媒体信息待读取";
         }
 
         if (metadata.Status == MetadataExtractionStatus.Unsupported)
         {
-            return "无专用元数据";
+            return "仅基本信息";
         }
 
         if (metadata.Status == MetadataExtractionStatus.Error)
         {
-            return "提取失败";
+            return "媒体信息读取失败";
         }
 
         var content = metadata.Content;
         if (content is null)
         {
-            return "已提取";
+            return "媒体信息已读取";
         }
 
         var parts = new List<string>();
@@ -1408,7 +1408,7 @@ public sealed partial class MainForm : Form
                 AssetMediaKind.Image => "图片",
                 AssetMediaKind.Audio => "音频",
                 AssetMediaKind.Video => "视频",
-                _ => "已提取"
+                _ => "媒体信息已读取"
             }
             : string.Join(" · ", parts);
     }

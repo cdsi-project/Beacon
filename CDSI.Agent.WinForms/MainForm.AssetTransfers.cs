@@ -468,7 +468,7 @@ public sealed partial class MainForm
         if (remaining > 0)
         {
             details +=
-                $"{Environment.NewLine}{Environment.NewLine}另有 {remaining:N0} 个错误，详情已写入本地操作审计。";
+                $"{Environment.NewLine}{Environment.NewLine}另有 {remaining:N0} 项文件操作未完成，详情已写入本地操作审计。";
         }
 
         MessageBox.Show(

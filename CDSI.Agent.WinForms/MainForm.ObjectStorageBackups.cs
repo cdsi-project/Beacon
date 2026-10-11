@@ -73,6 +73,11 @@ public sealed partial class MainForm
 
         try
         {
+            if (await GetOrConfigureBackupProfilesAsync([]) is null)
+            {
+                return;
+            }
+
             var projects = await _assetCollectionService.ListAsync();
             Guid? projectId;
             if (projects.Count == 0)
@@ -191,11 +196,10 @@ public sealed partial class MainForm
             return;
         }
 
-        IReadOnlyList<ConfiguredObjectStorageProfile> profiles;
+        IReadOnlyList<ConfiguredObjectStorageProfile>? profiles;
         try
         {
-            var configuredProfiles = await _storageService.ListAsync();
-            profiles = SelectBackupProfiles(configuredProfiles, boundProfileIds);
+            profiles = await GetOrConfigureBackupProfilesAsync(boundProfileIds);
         }
         catch (Exception exception)
         {
@@ -203,27 +207,8 @@ public sealed partial class MainForm
             return;
         }
 
-        if (boundProfileIds.Length > 0 && profiles.Count != boundProfileIds.Length)
+        if (profiles is null)
         {
-            MessageBox.Show(
-                this,
-                $"该项目绑定的 {boundProfileIds.Length:N0} 个云端备份配置中，有 " +
-                $"{boundProfileIds.Length - profiles.Count:N0} 个不存在或缺少有效凭据。" +
-                "请检查“设置”的“备份配置”。",
-                "CDSI Beacon",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Information);
-            return;
-        }
-
-        if (profiles.Count == 0)
-        {
-            MessageBox.Show(
-                this,
-                "尚未配置带有效凭据的备份存储。请先在“设置”的“备份配置”中添加配置。",
-                "CDSI Beacon",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Information);
             return;
         }
 
@@ -330,6 +315,47 @@ public sealed partial class MainForm
         }
     }
 
+    private async Task<IReadOnlyList<ConfiguredObjectStorageProfile>?> GetOrConfigureBackupProfilesAsync(
+        IReadOnlyCollection<Guid> backupProfileIds)
+    {
+        var requiredIds = backupProfileIds.Distinct().ToArray();
+        var profiles = SelectBackupProfiles(await _storageService.ListAsync(), requiredIds);
+        if (profiles.Count > 0 && (requiredIds.Length == 0 || profiles.Count == requiredIds.Length))
+        {
+            return profiles;
+        }
+
+        _statusLabel.Text = requiredIds.Length == 0
+            ? "请先添加云端备份配置，保存后点击“继续备份”"
+            : "请补充项目绑定的备份配置和凭据，保存后点击“继续备份”";
+        using var settings = new SettingsForm(
+            _workspaceService,
+            _scanRootService,
+            _storageService,
+            _openWebSettingsService,
+            _gitProfileService,
+            _stateDatabaseWriteGate,
+            SettingsPage.BackupProfiles,
+            backupSetupOnly: true);
+        if (settings.ShowDialog(this) != DialogResult.OK)
+        {
+            _statusLabel.Text = "本次备份未开始，已取消备份设置";
+            return null;
+        }
+
+        profiles = SelectBackupProfiles(await _storageService.ListAsync(), requiredIds);
+        if (profiles.Count == 0 || (requiredIds.Length > 0 && profiles.Count != requiredIds.Length))
+        {
+            _statusLabel.Text = requiredIds.Length == 0
+                ? "本次备份未开始，尚未保存完整的备份配置和凭据"
+                : "本次备份未开始，项目绑定的备份配置仍不完整，请检查配置或项目绑定";
+            return null;
+        }
+
+        _statusLabel.Text = "备份配置已保存，继续准备项目备份";
+        return profiles;
+    }
+
     internal static IReadOnlyList<ConfiguredObjectStorageProfile> SelectBackupProfiles(
         IReadOnlyList<ConfiguredObjectStorageProfile> configuredProfiles,
         IReadOnlyCollection<Guid> backupProfileIds)
@@ -434,7 +460,7 @@ public sealed partial class MainForm
         if (remaining > 0)
         {
             details +=
-                $"{Environment.NewLine}{Environment.NewLine}另有 {remaining:N0} 个错误，详情已写入本地上传审计。";
+                $"{Environment.NewLine}{Environment.NewLine}另有 {remaining:N0} 项上传未完成，详情已写入本地上传审计。";
         }
 
         MessageBox.Show(

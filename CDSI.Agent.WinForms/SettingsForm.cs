@@ -9,12 +9,20 @@ using CDSI.Agent.Core.Storage;
 
 namespace CDSI.Agent.WinForms;
 
+internal enum SettingsPage
+{
+    Workspace,
+    ScanRoots,
+    BackupProfiles
+}
+
 public sealed partial class SettingsForm : Form
 {
     private readonly WorkspaceApplicationService _workspaceService;
     private readonly ScanRootManagementService _scanRootService;
     private readonly ObjectStorageProfileService _storageService;
     private readonly StateDatabaseWriteGate _stateDatabaseWriteGate;
+    private readonly bool _backupSetupOnly;
     private readonly TextBox _workspacePathTextBox = new();
     private readonly DataGridView _rootsGrid = new();
     private readonly ContextMenuStrip _rootContextMenu = new();
@@ -48,7 +56,8 @@ public sealed partial class SettingsForm : Form
         OpenWebSettingsService openWebSettingsService,
         GitProfileService gitProfileService,
         StateDatabaseWriteGate stateDatabaseWriteGate,
-        bool openScanRoots = false)
+        SettingsPage initialPage = SettingsPage.Workspace,
+        bool backupSetupOnly = false)
     {
         _workspaceService = workspaceService;
         _scanRootService = scanRootService;
@@ -57,6 +66,7 @@ public sealed partial class SettingsForm : Form
         _gitProfileService = gitProfileService;
         _stateDatabaseWriteGate = stateDatabaseWriteGate ??
             throw new ArgumentNullException(nameof(stateDatabaseWriteGate));
+        _backupSetupOnly = backupSetupOnly;
 
         Text = "CDSI Beacon 设置";
         StartPosition = FormStartPosition.CenterParent;
@@ -74,15 +84,26 @@ public sealed partial class SettingsForm : Form
         tabs.TabPages.Add(CreateWorkspacePage());
         var scanRootsPage = CreateScanRootsPage();
         tabs.TabPages.Add(scanRootsPage);
-        tabs.TabPages.Add(CreateStoragePage());
+        var storagePage = CreateStoragePage();
+        tabs.TabPages.Add(storagePage);
         tabs.TabPages.Add(CreateOpenWebPage());
         tabs.TabPages.Add(CreateGitPage());
-        if (openScanRoots)
+        tabs.SelectedTab = initialPage switch
         {
-            tabs.SelectedTab = scanRootsPage;
+            SettingsPage.ScanRoots => scanRootsPage,
+            SettingsPage.BackupProfiles => storagePage,
+            _ => tabs.TabPages[0]
+        };
+        if (backupSetupOnly)
+        {
+            tabs.SelectedTab = storagePage;
+            foreach (TabPage page in tabs.TabPages)
+            {
+                page.Enabled = page == storagePage;
+            }
         }
 
-        _startScanButton.Text = "开始扫描";
+        _startScanButton.Text = backupSetupOnly ? "继续备份" : "开始扫描";
         _startScanButton.BackColor = Color.FromArgb(24, 121, 78);
         _startScanButton.ForeColor = Color.White;
         _startScanButton.FlatStyle = FlatStyle.Flat;
@@ -93,12 +114,16 @@ public sealed partial class SettingsForm : Form
         _startScanButton.Size = new Size(104, 32);
 
         var closeButton = CreateButton(
-            "关闭",
+            backupSetupOnly ? "取消本次备份" : "关闭",
             Color.FromArgb(236, 239, 242),
             Color.FromArgb(31, 37, 43));
         closeButton.DialogResult = DialogResult.Cancel;
         closeButton.Anchor = AnchorStyles.Right;
-        closeButton.Size = new Size(96, 32);
+        closeButton.Size = new Size(backupSetupOnly ? 128 : 96, 32);
+        if (backupSetupOnly)
+        {
+            CancelButton = closeButton;
+        }
 
         var footer = new FlowLayoutPanel
         {
@@ -820,6 +845,13 @@ public sealed partial class SettingsForm : Form
 
     private void UpdateStartScanButton()
     {
+        if (_backupSetupOnly)
+        {
+            _startScanButton.Enabled = _storageGrid.Rows.Cast<DataGridViewRow>()
+                .Any(row => row.Tag is ConfiguredObjectStorageProfile { HasStoredSecret: true });
+            return;
+        }
+
         _startScanButton.Enabled = _initialScanRootIds.Count > 0;
     }
 
@@ -892,7 +924,7 @@ public sealed partial class SettingsForm : Form
             ScanRootStatus.Active => "正常",
             ScanRootStatus.Unavailable => "不可用",
             ScanRootStatus.Offline => "设备离线",
-            ScanRootStatus.Error => "有错误",
+            ScanRootStatus.Error => "扫描未完成",
             _ => root.Status.ToString()
         };
     }
@@ -913,6 +945,7 @@ public sealed partial class SettingsForm : Form
                 configured.HasStoredSecret ? "已保存" : "缺失");
             _storageGrid.Rows[index].Tag = configured;
         }
+        UpdateStartScanButton();
     }
 
     private async void AddStorageButton_Click(object? sender, EventArgs e)

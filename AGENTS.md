@@ -10,7 +10,7 @@ It runs on the creator's own device and is responsible for discovering, indexing
 
 The agent must be designed as a **local-first, privacy-conscious, non-destructive system**.
 
-In the target architecture, CDSI Server is the optional control plane, CDSI Beacon is the local execution plane, and cloud storage such as Aliyun OSS, AWS S3, Cloudflare R2, Tencent COS, MinIO, NAS, or local filesystem is the data/storage plane. The current v0.2.23 application operates without CDSI Server.
+In the target architecture, CDSI Server is the optional control plane, CDSI Beacon is the local execution plane, and cloud storage such as Aliyun OSS, AWS S3, Cloudflare R2, Tencent COS, MinIO, NAS, or local filesystem is the data/storage plane. The current v0.2.24 application operates without CDSI Server.
 
 ---
 
@@ -43,12 +43,14 @@ The agent should help answer questions such as:
 - Which files are likely source assets, drafts, finals, covers, subtitles, references, or derivatives?
 - Which assets are related even if they are stored in different folders?
 
-### 1.1 Current Repository Baseline (v0.2.23)
+### 1.1 Current Repository Baseline (v0.2.24)
 
-The current baseline is v0.2.23, a working Windows desktop application built with .NET 10, WinForms, and SQLite. Before planning or implementing a change, distinguish these implemented capabilities from future requirements:
+The current baseline is v0.2.24, a working Windows desktop application built with .NET 10, WinForms, and SQLite. Before planning or implementing a change, distinguish these implemented capabilities from future requirements:
 
 - local workspace and multiple read-only scan roots
 - an empty-asset onboarding prompt that opens scan-root settings directly; show it only after successful initialization and an unfiltered asset count of zero, never for a filtered search with no matches
+- an empty-cloud-backup onboarding prompt with asset selection, configuration, and project steps; show it only after successful initialization and an unfiltered registered-replica count of zero
+- backup configuration preflight that opens the backup settings page when profiles or stored credentials are missing; require explicit continuation, preserve bound targets, and keep unrelated settings and scan commands out of the pending backup
 - per-root opt-in idle scan schedules with minute, hour, or day intervals; due work is deferred while Beacon is busy or a blocking modal window is open, while the Task Center remains available for live idle-scan progress and cancellation
 - stable local Asset IDs and local Project IDs
 - paged asset search, tags, duplicate detection, media metadata, and statistics
@@ -71,7 +73,7 @@ The current baseline is v0.2.23, a working Windows desktop application built wit
 
 The current application does **not** connect to CDSI Server, use temporary server-issued credentials, run AI/embedding pipelines, extract document bodies in the background, or send telemetry. Startup update discovery performs a read-only request for Gitee's public `VERSION` file and sends no asset metadata, paths, configuration, credentials, or client ID. Reader requests go directly to a user-added source only while adding/importing a subscription or performing a manual refresh; there is no Reader scheduler yet. Saving a Git profile does not perform network activity; clone, commit, and push occur only after the user explicitly selects a project and repository and confirms synchronization. State Bundle v1 is a user-triggered, unencrypted local ZIP: Beacon creates one on the direct backup command and creates a mandatory pre-restore bundle as part of an explicitly confirmed healthy-state restore. It does not schedule State Bundles in the background, apply bundle retention, upload them to object storage, or restore them from the cloud.
 
-The cloud project model is transitional in v0.2.23: local projects have stable IDs, but remote objects still use `<project name>/<original filename>` and the cloud UI groups records by that prefix. Stable remote ProjectId manifests and cross-device project reconstruction are next-stage work, not existing behavior.
+The cloud project model is transitional in v0.2.24: local projects have stable IDs, but remote objects still use `<project name>/<original filename>` and the cloud UI groups records by that prefix. Stable remote ProjectId manifests and cross-device project reconstruction are next-stage work, not existing behavior.
 
 ---
 

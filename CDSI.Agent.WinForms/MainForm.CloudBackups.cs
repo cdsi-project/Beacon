@@ -277,9 +277,7 @@ public sealed partial class MainForm
         toolbar.Controls.Add(_cloudBackupSummaryLabel);
         layout.Controls.Add(toolbar, 0, 0);
 
-        layout.Controls.Add(CreateCloudBackupProjectSplit(
-            _cloudBackupProjectGrid,
-            _cloudBackupGrid), 0, 1);
+        layout.Controls.Add(CreateCloudBackupListHost(), 0, 1);
         return layout;
     }
 
@@ -313,6 +311,7 @@ public sealed partial class MainForm
     private async Task RefreshCloudBackupsAsync()
     {
         _availableCloudBackups = await _objectStorageManagementService.ListAsync();
+        _cloudBackupsLoaded = true;
         ApplyCloudBackupSearch();
     }
 
@@ -390,7 +389,9 @@ public sealed partial class MainForm
         _cloudBackupGrid.Rows.Clear();
         if (project is null)
         {
-            _cloudBackupSummaryLabel.Text = "没有符合条件的云端副本";
+            _cloudBackupSummaryLabel.Text = _availableCloudBackups.Count == 0
+                ? "暂无云端备份记录"
+                : "没有符合搜索条件的云端备份";
             UpdateCloudBackupActionState();
             return;
         }
@@ -786,6 +787,7 @@ public sealed partial class MainForm
 
     private void UpdateCloudBackupActionState()
     {
+        UpdateCloudBackupOnboarding();
         var selected = GetSelectedCloudBackups();
         _restoreCloudBackupMenuItem.Enabled = !_isBusy &&
             selected.Count > 0 && selected.All(IsRestorableCloudBackup);
