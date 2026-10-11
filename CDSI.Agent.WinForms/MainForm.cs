@@ -751,7 +751,13 @@ public sealed partial class MainForm : Form
             await _scanService.InitializeAsync();
             await InitializeReaderAsync();
             var workspace = await _workspaceService.GetAsync();
-            if (workspace is null)
+            if (_selectedWorkspacePath is not null &&
+                (workspace is null || !string.Equals(Path.GetFullPath(workspace.Path),
+                    _selectedWorkspacePath, StringComparison.OrdinalIgnoreCase)))
+            {
+                workspace = (await _workspaceService.ConfigureAsync(_selectedWorkspacePath)).Workspace;
+            }
+            else if (workspace is null)
             {
                 using var setupForm = new FirstRunSetupForm();
                 if (setupForm.ShowDialog(this) != DialogResult.OK)
@@ -775,6 +781,10 @@ public sealed partial class MainForm : Form
                 ? FormatVolumeReconciliationStatus(volumeResult)
                 : "就绪";
             _initializationSucceeded = true;
+            if (_readerInitialized && _workspaceDataDirectoryService is not null)
+            {
+                _workspaceDataDirectoryService.MarkInitialized(workspace.Path);
+            }
             SetBackgroundTimerRunning(_databaseBackupTimer, shouldRun: true);
             SetBackgroundTimerRunning(_idleScanTimer, shouldRun: true);
         }
@@ -814,9 +824,18 @@ public sealed partial class MainForm : Form
             _openWebSettingsService,
             _gitProfileService,
             _stateDatabaseWriteGate);
+        if (_workspaceDataDirectoryService is not null)
+        {
+            settingsForm.WorkspaceSwitchRequested = SwitchWorkspaceDataAsync;
+        }
         settingsForm.WorkspaceChanged += workspacePath =>
             _runtimeLog.TryUseWorkspace(workspacePath);
         var settingsResult = settingsForm.ShowDialog(this);
+        if (RestartForWorkspaceChange)
+        {
+            Close();
+            return;
+        }
         await ReconcileLocalVolumesAsync();
         await RefreshAssetCollectionsAsync();
         await TryCreateAutomaticDatabaseBackupAsync();

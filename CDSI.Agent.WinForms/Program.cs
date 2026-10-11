@@ -46,12 +46,14 @@ static class Program
             return;
         }
 
-        var dataDirectory = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "CDSI");
+        var profileDirectory = GetProfileDirectory(null);
+        var dataDirectory = profileDirectory;
         RuntimeLogService? runtimeLog = null;
         try
         {
+            profileDirectory = GetProfileDirectory(
+                Environment.GetEnvironmentVariable("CDSI_BEACON_PROFILE_DIRECTORY"));
+            dataDirectory = profileDirectory;
             // Retain the legacy mutex name so Atlas and Beacon cannot run together.
             using var singleInstance = new SingleInstanceCoordinator("CDSI.Atlas");
             if (!singleInstance.IsPrimaryInstance)
@@ -61,13 +63,35 @@ static class Program
             }
 
             ApplicationConfiguration.Initialize();
-            runtimeLog = new RuntimeLogService(dataDirectory);
+            runtimeLog = new RuntimeLogService(profileDirectory);
+
+            // Complete old-version recovery before taking migration snapshots.
+            // No databases are initialized or created by this check.
+            if (Directory.Exists(Path.Combine(profileDirectory, "StateProtection")))
+            {
+                new PendingStateRestoreService(profileDirectory,
+                        Path.Combine(profileDirectory, "cdsi.db"),
+                        Path.Combine(profileDirectory, "reader.db"))
+                    .ApplyPendingAsync().GetAwaiter().GetResult();
+            }
+            var workspaceDataService = new WorkspaceDataDirectoryService(profileDirectory);
+            var selectedWorkspace = WorkspaceStartup.Resolve(
+                workspaceDataService, profileDirectory, runtimeLog);
+            if (selectedWorkspace is null)
+            {
+                return;
+            }
+
+            dataDirectory = WorkspaceDataDirectoryService.GetDataDirectory(selectedWorkspace.WorkspacePath);
+            // The existing per-user mutex does not cover two Windows users opening one workspace.
+            using var workspaceLock = new FileStream(Path.Combine(dataDirectory, ".beacon.lock"),
+                FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+            runtimeLog.TryUseWorkspace(selectedWorkspace.WorkspacePath);
 
             var databasePath = Path.Combine(dataDirectory, "cdsi.db");
             var readerDatabasePath = Path.Combine(dataDirectory, "reader.db");
-            var clientIdentityExistedBeforeStartup = File.Exists(Path.Combine(
-                dataDirectory,
-                FileClientIdentityProvider.IdentityFileName));
+            var workspaceStateExistedBeforeStartup = selectedWorkspace.Initialized ||
+                WorkspaceDataDirectoryService.HasExistingState(selectedWorkspace.WorkspacePath);
             var pendingStateRestoreService = new PendingStateRestoreService(
                 dataDirectory,
                 databasePath,
@@ -103,11 +127,11 @@ static class Program
                     $"待恢复的状态备份未通过验证，当前数据未更改。\n\n{exception.Message}";
             }
 
-            var clientIdentity = new FileClientIdentityProvider(dataDirectory)
+            var clientIdentity = new FileClientIdentityProvider(profileDirectory)
                 .GetOrCreate();
             var missingStateDatabases =
                 GetMissingStateDatabases(
-                    clientIdentityExistedBeforeStartup,
+                    workspaceStateExistedBeforeStartup,
                     assetDatabaseExistedBeforeStartup: File.Exists(databasePath),
                     readerDatabaseExistedBeforeStartup: File.Exists(readerDatabasePath));
 
@@ -236,6 +260,7 @@ static class Program
                 clientIdentity.Value,
                 dataDirectory,
                 runtimeLog);
+            mainForm.BindWorkspaceDataLocation(selectedWorkspace.WorkspacePath, workspaceDataService);
             mainForm.SetStartupStateRestoreNotification(
                 startupRestoreResult,
                 startupRestoreWarning,
@@ -244,7 +269,7 @@ static class Program
                 () => MainWindowActivator.RequestActivation(mainForm));
             System.Windows.Forms.Application.Run(mainForm);
             var restartForPendingStateRestore =
-                mainForm.RestartForPendingStateRestore;
+                mainForm.RestartForPendingStateRestore || mainForm.RestartForWorkspaceChange;
             runtimeLog.WriteInformation("CDSI Beacon 正常退出");
             if (restartForPendingStateRestore)
             {
@@ -284,6 +309,22 @@ static class Program
         }
 
         return missing;
+    }
+
+    internal static string GetProfileDirectory(string? overrideDirectory)
+    {
+        if (string.IsNullOrWhiteSpace(overrideDirectory))
+        {
+            return Path.Combine(Environment.GetFolderPath(
+                Environment.SpecialFolder.LocalApplicationData), "CDSI");
+        }
+
+        if (!Path.IsPathFullyQualified(overrideDirectory))
+        {
+            throw new ArgumentException("隔离运行的配置目录必须是绝对路径。");
+        }
+
+        return Path.GetFullPath(overrideDirectory);
     }
 
     internal static bool TryParsePendingRestoreRestartHelper(
@@ -365,9 +406,8 @@ static class Program
 
     private static void ReportRestartHelperFailure(Exception exception)
     {
-        var dataDirectory = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "CDSI");
+        var dataDirectory = GetProfileDirectory(
+            Environment.GetEnvironmentVariable("CDSI_BEACON_PROFILE_DIRECTORY"));
         try
         {
             new RuntimeLogService(dataDirectory).WriteError(

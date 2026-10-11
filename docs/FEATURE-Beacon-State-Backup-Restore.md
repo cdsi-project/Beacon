@@ -10,6 +10,14 @@
 
 # 0. Current Implementation Status (Beacon v0.2.21)
 
+Storage update in v0.2.22: both live databases and `StateProtection` now reside in
+`<workspace>/System/Data`. The profile retains only the workspace locator and
+installation identity. The v1 portable bundle format is unchanged. Legacy profile
+databases can be migrated through verified snapshots with the originals retained;
+after an OS reinstall, the user selects the original workspace before repositories
+are initialized. If only old automatic snapshots survive, startup offers explicit,
+checksum-verified recovery to the selected workspace. See README for current paths.
+
 Beacon v0.2.21 implements the first local recovery milestone of this design.
 It is deliberately smaller than the complete provider-backed architecture described
 later in this document.
@@ -716,7 +724,7 @@ If normal repository initialization cannot complete because either current datab
 missing or damaged, the emergency path must not depend on those repositories or the
 workspace row. It copies the exact `cdsi.db` and `reader.db` file families, including
 the presence or absence of each `-wal`, `-shm`, and `-journal`, to the controlled
-`%LOCALAPPDATA%\CDSI\StateProtection\EmergencySafety` directory before replacement.
+`<workspace>/System/Data/StateProtection/EmergencySafety` directory before replacement.
 The safety copy must remain outside the files being replaced and its path must be
 included in the normal success or failure notification. A raw emergency copy is
 forensic and rollback material; it is not a portable `.cdsibak` and may preserve the

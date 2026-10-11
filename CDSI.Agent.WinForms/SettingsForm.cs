@@ -38,6 +38,8 @@ public sealed partial class SettingsForm : Form
     internal bool AsyncOperationInProgress => _asyncOperationInProgress;
 
     internal event Action<string>? WorkspaceChanged;
+    [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+    internal Func<string, Task>? WorkspaceSwitchRequested { get; set; }
 
     internal SettingsForm(
         WorkspaceApplicationService workspaceService,
@@ -532,6 +534,12 @@ public sealed partial class SettingsForm : Form
 
     private async void WorkspaceSaveButton_Click(object? sender, EventArgs e)
     {
+        if (WorkspaceSwitchRequested is not null)
+        {
+            await SaveWorkspaceWithPersistentDataAsync();
+            return;
+        }
+
         string? configuredWorkspacePath = null;
         try
         {
@@ -579,7 +587,60 @@ public sealed partial class SettingsForm : Form
     private static string FormatWorkspaceStatus(string workspacePath, string inboxPath)
     {
         return $"Inbox: {inboxPath}{Environment.NewLine}" +
+            $"数据库: {Path.Combine(workspacePath, "System", "Data")}{Environment.NewLine}" +
             $"数据库备份: {Path.Combine(workspacePath, "System", "DatabaseBackups")}";
+    }
+
+    private async Task SaveWorkspaceWithPersistentDataAsync()
+    {
+        if (!TryBeginAsyncOperation())
+        {
+            return;
+        }
+
+        var restart = false;
+        try
+        {
+            var path = Path.GetFullPath(_workspacePathTextBox.Text.Trim());
+            var current = await _workspaceService.GetAsync();
+            if (current is not null && string.Equals(Path.GetFullPath(current.Path), path,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            if (MessageBox.Show(this,
+                    $"将把资产和 RSS 数据库校验后复制到：\n{Path.Combine(path, "System", "Data")}\n\n完成后 Beacon 将重新启动。旧工作目录、数据库和素材均保留；目标已有数据时不会覆盖。",
+                    "更改工作目录", MessageBoxButtons.OKCancel, MessageBoxIcon.Warning,
+                    MessageBoxDefaultButton.Button2) != DialogResult.OK)
+            {
+                return;
+            }
+
+            if (WorkspaceStartup.IsOnSystemDrive(path) && MessageBox.Show(this,
+                    "所选目录位于系统盘，重装系统可能丢失数据库。仍继续吗？",
+                    "数据保存位置", MessageBoxButtons.YesNo, MessageBoxIcon.Warning,
+                    MessageBoxDefaultButton.Button2) != DialogResult.Yes)
+            {
+                return;
+            }
+
+            await WorkspaceSwitchRequested!(path);
+            restart = true;
+        }
+        catch (Exception exception)
+        {
+            ShowError("无法更改工作目录，旧数据仍保留", exception);
+        }
+        finally
+        {
+            SetAsyncOperationInProgress(false);
+        }
+
+        if (restart)
+        {
+            Close();
+        }
     }
 
     private async void AddRootButton_Click(object? sender, EventArgs e)

@@ -9,7 +9,7 @@
 
 本轮已完成 Reader Core：直接订阅 RSS 2.0、Atom 和 JSON Feed URL，三栏阅读界面，单文件夹归类，已读/未读、收藏、搜索、手动刷新、ETag、Last-Modified、304、抓取日志、稳定去重、OPML 导入导出，以及包含条目和阅读状态的完整 JSON 备份恢复。
 
-Reader 使用独立的 `%LOCALAPPDATA%\CDSI\reader.db`，并在工作目录的 `System\DatabaseBackups\Reader` 中生成一致性快照。Feed 内容只以纯文本呈现；本机和局域网来源默认拒绝，需在添加订阅时显式允许。
+自 v0.2.22 起，Reader 使用独立的 `<工作目录>\System\Data\reader.db`，并在工作目录的 `System\DatabaseBackups\Reader` 中生成一致性快照。旧 `%LOCALAPPDATA%\CDSI\reader.db` 可经用户确认迁移；重装后选择原工作目录可以继续使用阅读记录。Feed 内容只以纯文本呈现；本机和局域网来源默认拒绝，需在添加订阅时显式允许。
 
 尚未实现：从普通网站自动发现 Feed、稍后读、归档、定时刷新、并发刷新、网页全文抓取、保存到 Beacon 资产库、标注和 AI 能力。下方未勾选项仍属于后续路线图，不代表当前版本能力。
 

@@ -7,7 +7,7 @@ public sealed class FirstRunSetupForm : Form
     private readonly TextBox _pathTextBox = new();
     private readonly Button _confirmButton = new();
 
-    public FirstRunSetupForm()
+    public FirstRunSetupForm(string? initialPath = null)
     {
         Text = "设置 CDSI 工作目录";
         StartPosition = FormStartPosition.CenterParent;
@@ -47,7 +47,7 @@ public sealed class FirstRunSetupForm : Form
 
         _pathTextBox.Dock = DockStyle.Fill;
         _pathTextBox.Margin = new Padding(0, 6, 8, 6);
-        _pathTextBox.Text = WorkspaceApplicationService.GetSuggestedDefaultPath();
+        _pathTextBox.Text = initialPath ?? WorkspaceApplicationService.GetSuggestedDefaultPath();
         _pathTextBox.AccessibleName = "工作目录路径";
         layout.Controls.Add(_pathTextBox, 0, 1);
         layout.SetColumnSpan(_pathTextBox, 2);
@@ -59,7 +59,7 @@ public sealed class FirstRunSetupForm : Form
 
         var note = new Label
         {
-            Text = "将创建 Inbox、Assets、Exports、Cache、Temp 和 System 子目录。",
+            Text = "建议选择非系统盘。数据库保存在 System\\Data；重装后选择原工作目录可继续使用记录。",
             Dock = DockStyle.Fill,
             ForeColor = Color.FromArgb(88, 98, 106),
             TextAlign = ContentAlignment.TopLeft,
@@ -73,7 +73,7 @@ public sealed class FirstRunSetupForm : Form
         cancelButton.Margin = new Padding(4, 0, 4, 0);
         layout.Controls.Add(cancelButton, 1, 3);
 
-        _confirmButton.Text = "创建并继续";
+        _confirmButton.Text = "使用并继续";
         _confirmButton.DialogResult = DialogResult.OK;
         _confirmButton.BackColor = Color.FromArgb(24, 121, 78);
         _confirmButton.ForeColor = Color.White;

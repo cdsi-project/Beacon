@@ -730,19 +730,24 @@ SQLite
 Recommended data directory:
 
 ```text
-%LOCALAPPDATA%\CDSI\
+<CDSI workspace>\System\Data\
 ```
 
 Example:
 
 ```text
-%LOCALAPPDATA%\CDSI\
+<CDSI workspace>\System\Data\
 ├── cdsi.db
-├── config.json
-├── logs\                  startup/emergency fallback only
-├── cache\
-└── thumbnails\
+├── reader.db
+├── beacon-data.json
+└── StateProtection\
 ```
+
+As of v0.2.22, the workspace is selected before database initialization. Prefer a
+non-system disk so reinstalling Windows does not discard asset and project records.
+The profile directory retains only a workspace locator and the installation identity.
+Existing state is reopened or explicitly recovered; unavailable workspaces must not
+silently produce a blank replacement database.
 
 Do not store the database in the application installation directory.
 

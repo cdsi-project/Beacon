@@ -10,7 +10,7 @@ It runs on the creator's own device and is responsible for discovering, indexing
 
 The agent must be designed as a **local-first, privacy-conscious, non-destructive system**.
 
-In the target architecture, CDSI Server is the optional control plane, CDSI Beacon is the local execution plane, and cloud storage such as Aliyun OSS, AWS S3, Cloudflare R2, Tencent COS, MinIO, NAS, or local filesystem is the data/storage plane. The current v0.2.21 application operates without CDSI Server.
+In the target architecture, CDSI Server is the optional control plane, CDSI Beacon is the local execution plane, and cloud storage such as Aliyun OSS, AWS S3, Cloudflare R2, Tencent COS, MinIO, NAS, or local filesystem is the data/storage plane. The current v0.2.22 application operates without CDSI Server.
 
 ---
 
@@ -43,9 +43,9 @@ The agent should help answer questions such as:
 - Which files are likely source assets, drafts, finals, covers, subtitles, references, or derivatives?
 - Which assets are related even if they are stored in different folders?
 
-### 1.1 Current Repository Baseline (v0.2.21)
+### 1.1 Current Repository Baseline (v0.2.22)
 
-The current baseline is v0.2.21, a working Windows desktop application built with .NET 10, WinForms, and SQLite. Before planning or implementing a change, distinguish these implemented capabilities from future requirements:
+The current baseline is v0.2.22, a working Windows desktop application built with .NET 10, WinForms, and SQLite. Before planning or implementing a change, distinguish these implemented capabilities from future requirements:
 
 - local workspace and multiple read-only scan roots
 - per-root opt-in idle scan schedules with minute, hour, or day intervals; due work is deferred while Beacon is busy or a blocking modal window is open, while the Task Center remains available for live idle-scan progress and cancellation
@@ -64,13 +64,13 @@ The current baseline is v0.2.21, a working Windows desktop application built wit
 - a multi-resolution Beacon application icon embedded in the Windows executable
 - asynchronous update discovery from the public Gitee repository VERSION file, with a manual Help-menu command and no automatic download or execution
 - a local-first Reader tab for direct RSS 2.0, Atom, and JSON Feed subscriptions, manual conditional refresh, read/star state, folder navigation, local search, OPML subscription exchange, and complete JSON data export/import
-- an independent `%LOCALAPPDATA%\CDSI\reader.db` with consistent snapshots under the managed workspace's `System/DatabaseBackups/Reader` directory
+- independent workspace-owned `System/Data/cdsi.db` and `System/Data/reader.db`, with a profile-local workspace locator; reinstalling Windows must allow reopening the original workspace without reindexing
 - local `.cdsibak` State Bundle v1 creation, listing, validation, export, and explicit restore through the Data Protection UI; each bundle contains fixed snapshots of both `cdsi.db` and `reader.db`, with independent schema versions, sizes, and SHA-256 values in one manifest
 - restart-bound restore before repository initialization, including a portable pre-restore safety bundle for healthy databases, raw SQLite file-family isolation for emergency recovery from missing or damaged databases, and recoverable rollback of the complete two-database pair
 
 The current application does **not** connect to CDSI Server, use temporary server-issued credentials, run AI/embedding pipelines, extract document bodies in the background, or send telemetry. Startup update discovery performs a read-only request for Gitee's public `VERSION` file and sends no asset metadata, paths, configuration, credentials, or client ID. Reader requests go directly to a user-added source only while adding/importing a subscription or performing a manual refresh; there is no Reader scheduler yet. Saving a Git profile does not perform network activity; clone, commit, and push occur only after the user explicitly selects a project and repository and confirms synchronization. State Bundle v1 is a user-triggered, unencrypted local ZIP: Beacon creates one on the direct backup command and creates a mandatory pre-restore bundle as part of an explicitly confirmed healthy-state restore. It does not schedule State Bundles in the background, apply bundle retention, upload them to object storage, or restore them from the cloud.
 
-The cloud project model is transitional in v0.2.21: local projects have stable IDs, but remote objects still use `<project name>/<original filename>` and the cloud UI groups records by that prefix. Stable remote ProjectId manifests and cross-device project reconstruction are next-stage work, not existing behavior.
+The cloud project model is transitional in v0.2.22: local projects have stable IDs, but remote objects still use `<project name>/<original filename>` and the cloud UI groups records by that prefix. Stable remote ProjectId manifests and cross-device project reconstruction are next-stage work, not existing behavior.
 
 ---
 
@@ -1053,7 +1053,7 @@ OpenWeb publications, Git profiles, latest Git project sync records, and applica
 
 The current schema uses `asset_collections` as the persisted project model. Reader
 subscriptions, Feed-provided plain-text content, read/star state, and bounded fetch
-logs live in the independent `%LOCALAPPDATA%\CDSI\reader.db`; they are not asset-text
+logs live in the independent `<workspace>/System/Data/reader.db`; they are not asset-text
 records. Database snapshots and their JSON manifests are filesystem artifacts under the
 managed workspace's `System/DatabaseBackups` directory; Reader snapshots use its
 `Reader` subdirectory. These snapshots are not SQLite rows. Schema
@@ -1066,7 +1066,7 @@ scan pipeline without triggering uploads or other remote operations.
 Reader schema v1 stores normalized unique Feed URLs, one optional folder per Feed,
 stable per-Feed entry deduplication keys, source/state separation, conditional HTTP
 validators, bounded fetch logs, and an explicit private-network opt-in. Reader HTML
-must remain non-executable in the desktop UI; v0.2.21 renders only normalized plain
+must remain non-executable in the desktop UI; v0.2.22 renders only normalized plain
 text and does not load scripts, embedded resources, or remote images.
 
 State Bundle v1 is a separate portable recovery artifact under the managed workspace's
@@ -1109,6 +1109,16 @@ per-database snapshot scheduler and retention policy.
 Future semantic tables such as asset features, embeddings, relations, clusters, and inbox items should be added only when their owning feature is implemented. Do not infer that a table listed in an older design document already exists.
 
 Database migrations must be versioned. Do not place core state only in transient memory.
+
+Windows databases and pending restore transactions must live under the selected
+workspace's `System/Data`, not `%LOCALAPPDATA%`. The profile may keep only the
+workspace locator, per-installation identity, and startup diagnostics. Select or
+resolve the workspace before database initialization. Never silently create a blank
+replacement when a remembered workspace is unavailable or existing state is missing.
+Legacy migration and workspace changes use verified SQLite snapshots, retain source
+files, refuse occupied destinations, and publish the staged database pair together.
+The workspace data directory also needs an exclusive process lease because per-user
+single-instance locks alone cannot protect a workspace shared by Windows accounts.
 
 ---
 
@@ -1605,7 +1615,7 @@ When modifying this repository:
 24. Make failures observable.
 25. Keep operations resumable where practical.
 26. Treat the repository-root `VERSION` file as the only application version source.
-27. For a code-version or release commit, run `powershell -NoProfile -File scripts/Increment-Version.ps1` and use the repository's `x.y.zz` sequence. The final component is always two digits from `10` through `99`; increment `x.y.99` to `x.(y+1).10`. `v0.2.10` is the explicit successor to the legacy `v0.206`; preserve the update checker's explicit cutover handling instead of replacing it with ordinary `System.Version` ordering. Run the full Release test suite, create the self-contained single-file `win-x64` publish output, and smoke-check it when preparing a binary release; a documentation-only change does not require a version bump or binary publish.
+27. Keep `VERSION` unchanged during feature work, fixes, local commits, and local builds. Continue compiling code changes using the current version. When the user requests a code push or a release, run `powershell -NoProfile -File scripts/Increment-Version.ps1` once for the entire batch of changes being pushed, then run the full Release test suite, create the self-contained single-file `win-x64` publish output, smoke-check it, and commit the version update with a matching `v<VERSION>` Git tag before pushing. Reuse an already prepared and verified version bump for the same batch instead of incrementing it again. A documentation-only push does not require a version bump or binary publish. Use the repository's `x.y.zz` sequence: the final component is always two digits from `10` through `99`; increment `x.y.99` to `x.(y+1).10`. `v0.2.10` is the explicit successor to the legacy `v0.206`; preserve the update checker's explicit cutover handling instead of replacing it with ordinary `System.Version` ordering.
 28. Use `dotnet test .\CDSI.Agent.slnx -c Release --no-restore` for the standard full suite after dependencies are restored. Do not run build, test, and publish concurrently against the same output directories because MSBuild file locks can make results nondeterministic.
 29. Keep new cloud uploads project-scoped. When adding whole-project restore, reconciliation, or deletion, use stable ProjectId/manifest identity; do not allow project names or object-key prefixes to become canonical identity. Preserve the current selected-replica restore/delete workflows until their replacement is complete.
 30. Preserve compatibility with legacy name-prefix cloud records used by released v0.200 and earlier versions. Require explicit confirmation before any migration, merge, overwrite, or remote deletion.

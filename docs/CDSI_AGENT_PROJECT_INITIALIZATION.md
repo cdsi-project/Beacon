@@ -511,24 +511,28 @@ Add dependencies only when the related module begins implementation.
 
 # 9. SQLite Location
 
-Use a per-user application directory.
+Use the user-selected workspace, preferably on a non-system disk. Resolve it before database initialization.
 
 Recommended:
 
 ```text
-%LOCALAPPDATA%\CDSI\
+<CDSI workspace>\System\Data\
 ```
 
 Initial structure:
 
 ```text
-%LOCALAPPDATA%\CDSI\
+<CDSI workspace>\System\Data\
 ├── cdsi.db
-├── config.json
-├── logs\                  startup/emergency fallback only
-├── cache\
-└── thumbnails\
+├── reader.db
+├── beacon-data.json
+└── StateProtection\
 ```
+
+`%LOCALAPPDATA%\CDSI` contains only the workspace locator, installation identity,
+and startup/emergency diagnostics. Reopening an existing workspace must preserve
+asset/project identities and reading state. Migration retains the old databases and
+never overwrites a destination that already contains state.
 
 Do not write application state into:
 

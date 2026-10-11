@@ -76,9 +76,20 @@ public sealed class WorkspaceApplicationService
     public static string GetSuggestedDefaultPath()
     {
         const string preferredDrive = @"D:\";
-        var parent = OperatingSystem.IsWindows() && Directory.Exists(preferredDrive)
-            ? preferredDrive
-            : Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        var parent = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        if (OperatingSystem.IsWindows())
+        {
+            var systemDrive = Path.GetPathRoot(Environment.GetFolderPath(
+                Environment.SpecialFolder.Windows));
+            var available = DriveInfo.GetDrives().Where(drive =>
+                    drive.IsReady && drive.DriveType == DriveType.Fixed &&
+                    !string.Equals(drive.Name, systemDrive, StringComparison.OrdinalIgnoreCase))
+                .OrderBy(drive => drive.Name, StringComparer.OrdinalIgnoreCase).ToArray();
+            parent = available.FirstOrDefault(drive => string.Equals(
+                drive.Name, preferredDrive, StringComparison.OrdinalIgnoreCase))?.Name ??
+                available.FirstOrDefault()?.Name ?? parent;
+        }
+
         return Path.Combine(parent, "cdsi_workspace");
     }
 
