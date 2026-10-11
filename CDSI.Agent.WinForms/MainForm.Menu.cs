@@ -32,7 +32,7 @@ public sealed partial class MainForm
         var openWorkspaceItem = new ToolStripMenuItem("打开 CDSI 工作目录(&W)");
         openWorkspaceItem.Click += async (_, _) => await OpenWorkspaceDirectoryAsync();
         _fileSettingsMenuItem.Text = "扫描目录设置...";
-        _fileSettingsMenuItem.Click += async (_, _) => await OpenSettingsAsync();
+        _fileSettingsMenuItem.Click += async (_, _) => await OpenSettingsAsync(openScanRoots: true);
         var openDataDirectoryItem = new ToolStripMenuItem("打开数据目录(&D)");
         openDataDirectoryItem.Click += (_, _) => OpenDirectoryPath(
             _dataDirectory,

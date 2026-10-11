@@ -47,7 +47,8 @@ public sealed partial class SettingsForm : Form
         ObjectStorageProfileService storageService,
         OpenWebSettingsService openWebSettingsService,
         GitProfileService gitProfileService,
-        StateDatabaseWriteGate stateDatabaseWriteGate)
+        StateDatabaseWriteGate stateDatabaseWriteGate,
+        bool openScanRoots = false)
     {
         _workspaceService = workspaceService;
         _scanRootService = scanRootService;
@@ -71,10 +72,15 @@ public sealed partial class SettingsForm : Form
             Padding = new Point(12, 5)
         };
         tabs.TabPages.Add(CreateWorkspacePage());
-        tabs.TabPages.Add(CreateScanRootsPage());
+        var scanRootsPage = CreateScanRootsPage();
+        tabs.TabPages.Add(scanRootsPage);
         tabs.TabPages.Add(CreateStoragePage());
         tabs.TabPages.Add(CreateOpenWebPage());
         tabs.TabPages.Add(CreateGitPage());
+        if (openScanRoots)
+        {
+            tabs.SelectedTab = scanRootsPage;
+        }
 
         _startScanButton.Text = "开始扫描";
         _startScanButton.BackColor = Color.FromArgb(24, 121, 78);

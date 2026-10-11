@@ -209,7 +209,7 @@ public sealed partial class MainForm : Form
                 _assetDetailSummaryLabel);
         var assetTabLayout = CreateAssetTabLayout(
             ConfigureAssetFilterPanel(),
-            _assetGrid,
+            CreateAssetListHost(),
             ConfigureAssetPagination(),
             detailsPanel);
         _assetsTabPage.Controls.Add(assetTabLayout);
@@ -378,7 +378,7 @@ public sealed partial class MainForm : Form
 
     internal static TableLayoutPanel CreateAssetTabLayout(
         Control filterPanel,
-        DataGridView assetGrid,
+        Control assetList,
         Control paginationPanel,
         Control detailsPanel)
     {
@@ -396,7 +396,7 @@ public sealed partial class MainForm : Form
         layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 36));
         layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 64));
         layout.Controls.Add(filterPanel, 0, 0);
-        layout.Controls.Add(assetGrid, 0, 1);
+        layout.Controls.Add(assetList, 0, 1);
         layout.Controls.Add(paginationPanel, 0, 2);
         layout.Controls.Add(detailsPanel, 0, 3);
         return layout;
@@ -815,7 +815,7 @@ public sealed partial class MainForm : Form
         await CheckForUpdatesAsync(showCurrentStatus: false);
     }
 
-    private async Task OpenSettingsAsync()
+    private async Task OpenSettingsAsync(bool openScanRoots = false)
     {
         using var settingsForm = new SettingsForm(
             _workspaceService,
@@ -823,7 +823,8 @@ public sealed partial class MainForm : Form
             _storageService,
             _openWebSettingsService,
             _gitProfileService,
-            _stateDatabaseWriteGate);
+            _stateDatabaseWriteGate,
+            openScanRoots);
         if (_workspaceDataDirectoryService is not null)
         {
             settingsForm.WorkspaceSwitchRequested = SwitchWorkspaceDataAsync;
@@ -1098,6 +1099,7 @@ public sealed partial class MainForm : Form
 
         var assetCount = await assetCountTask;
         var totalAssetCount = await totalAssetCountTask;
+        _assetOnboardingTotalCount = totalAssetCount;
         var pagination = CalculateAssetPagination(
             assetCount,
             _assetPageSize,
@@ -1171,6 +1173,7 @@ public sealed partial class MainForm : Form
         UpdateStatisticsDashboard(statistics);
 
         UpdateAssetPaginationControls(assetCount);
+        UpdateAssetOnboarding();
         UpdateAssetFilterResult(assetCount, totalAssetCount);
         if (_assetFileTypeFilterComboBox.SelectedItem is
                 AssetFileTypeFilterChoice currentFileType &&
@@ -1246,6 +1249,7 @@ public sealed partial class MainForm : Form
         _canCancelCurrentTask = ShouldAllowTaskCancellation(busy, allowCancel);
         SetProgressVisibility(_progressPanel, _progressPanelRowStyle, busy);
         _assetGrid.Enabled = !busy;
+        UpdateAssetOnboarding();
         _assetContextMenu.Enabled = !busy;
         UpdateAssetPaginationControls(_assetTotalItems);
         _collectionGrid.Enabled = !busy;
