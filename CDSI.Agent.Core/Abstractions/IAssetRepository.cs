@@ -88,7 +88,8 @@ public interface IAssetRepository
         string deviceId,
         IReadOnlyCollection<DiscoveredFile> files,
         DateTimeOffset discoveredAt,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        bool restoreHiddenAssets = false);
 
     Task<LocalAssetTransferSource?> GetLocalAssetTransferSourceAsync(
         Guid assetId,

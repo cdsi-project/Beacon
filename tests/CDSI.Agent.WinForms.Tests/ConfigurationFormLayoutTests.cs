@@ -74,12 +74,13 @@ public sealed class ConfigurationFormLayoutTests
             .OfType<Button>()
             .Single(button => button.Text == "关闭");
 
-        Assert.Equal(5, tabs.TabPages.Count);
+        Assert.Equal(6, tabs.TabPages.Count);
         Assert.Equal("工作目录", tabs.TabPages[0].Text);
         Assert.Equal("扫描目录", tabs.TabPages[1].Text);
         Assert.Equal("备份配置", tabs.TabPages[2].Text);
         Assert.Equal("OpenWeb", tabs.TabPages[3].Text);
         Assert.Equal("Git 配置", tabs.TabPages[4].Text);
+        Assert.Equal("系统集成", tabs.TabPages[5].Text);
         Assert.Equal(5, openWebSourcesGrid.Columns.Count);
         Assert.Equal(
             ["名称", "源站域名", "WordPress 用户名", "默认", "凭据"],

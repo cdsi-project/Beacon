@@ -10,7 +10,7 @@ It runs on the creator's own device and is responsible for discovering, indexing
 
 The agent must be designed as a **local-first, privacy-conscious, non-destructive system**.
 
-In the target architecture, CDSI Server is the optional control plane, CDSI Beacon is the local execution plane, and cloud storage such as Aliyun OSS, AWS S3, Cloudflare R2, Tencent COS, MinIO, NAS, or local filesystem is the data/storage plane. The current v0.2.25 application operates without CDSI Server.
+In the target architecture, CDSI Server is the optional control plane, CDSI Beacon is the local execution plane, and cloud storage such as Aliyun OSS, AWS S3, Cloudflare R2, Tencent COS, MinIO, NAS, or local filesystem is the data/storage plane. The current v0.2.26 application operates without CDSI Server.
 
 ---
 
@@ -43,9 +43,9 @@ The agent should help answer questions such as:
 - Which files are likely source assets, drafts, finals, covers, subtitles, references, or derivatives?
 - Which assets are related even if they are stored in different folders?
 
-### 1.1 Current Repository Baseline (v0.2.25)
+### 1.1 Current Repository Baseline (v0.2.26)
 
-The current baseline is v0.2.25, a working Windows desktop application built with .NET 10, WinForms, and SQLite. Before planning or implementing a change, distinguish these implemented capabilities from future requirements:
+The current baseline is v0.2.26, a working Windows desktop application built with .NET 10, WinForms, and SQLite. Before planning or implementing a change, distinguish these implemented capabilities from future requirements:
 
 - local workspace and multiple read-only scan roots
 - an empty-asset onboarding prompt that opens scan-root settings directly; show it only after successful initialization and an unfiltered asset count of zero, never for a filtered search with no matches
@@ -66,6 +66,7 @@ The current baseline is v0.2.25, a working Windows desktop application built wit
 - local SQLite consistent snapshots, audit records, task progress, and runtime logs under the managed workspace's `System/Logs` directory, with `%LOCALAPPDATA%\CDSI\Logs` retained only as a startup/emergency fallback
 - a stable per-installation UUID stored outside SQLite and shown in the About panel
 - single-instance Windows desktop behavior
+- opt-in, per-Windows-user Explorer file context-menu registration through Settings > System Integration; selected-file requests start Beacon or are forwarded to the existing primary instance and queued until database operations are available
 - a multi-resolution Beacon application icon embedded in the Windows executable
 - asynchronous update discovery from the public Gitee repository VERSION file, with a manual Help-menu command and no automatic download or execution
 - a local-first Reader tab for direct RSS 2.0, Atom, and JSON Feed subscriptions, manual conditional refresh, read/star state, folder navigation, local search, OPML subscription exchange, and complete JSON data export/import
@@ -75,7 +76,7 @@ The current baseline is v0.2.25, a working Windows desktop application built wit
 
 The current application does **not** connect to CDSI Server, use temporary server-issued credentials, run AI/embedding pipelines, extract document bodies in the background, or send telemetry. Startup update discovery performs a read-only request for Gitee's public `VERSION` file and sends no asset metadata, paths, configuration, credentials, or client ID. Reader requests go directly to a user-added source only while adding/importing a subscription or performing a manual refresh; there is no Reader scheduler yet. Saving a Git profile does not perform network activity; clone, commit, and push occur only after the user explicitly selects a project and repository and confirms synchronization. State Bundle v1 is a user-triggered, unencrypted local ZIP: Beacon creates one on the direct backup command and creates a mandatory pre-restore bundle as part of an explicitly confirmed healthy-state restore. It does not schedule State Bundles in the background, apply bundle retention, upload them to object storage, or restore them from the cloud.
 
-The cloud project model is transitional in v0.2.25: local projects have stable IDs, but remote objects still use `<project name>/<original filename>` and the cloud UI groups records by that prefix. Stable remote ProjectId manifests and cross-device project reconstruction are next-stage work, not existing behavior.
+The cloud project model is transitional in v0.2.26: local projects have stable IDs, but remote objects still use `<project name>/<original filename>` and the cloud UI groups records by that prefix. Stable remote ProjectId manifests and cross-device project reconstruction are next-stage work, not existing behavior.
 
 ---
 
@@ -1149,6 +1150,20 @@ Client identity must not depend on hostname or invasive hardware fingerprinting.
 ---
 
 ## 32. File Watching
+
+Explorer selected-file imports are explicit, read-only registration operations, not
+directory scans. Do not add parent scan roots, mark sibling locations missing, hash
+the entire index, move source files, or upload anything through this entry point.
+Only this explicit import may restore a persistently hidden asset; normal rescans
+must preserve hidden records. Keep asset identity, project membership, and cloud
+replicas unchanged. Reject directories, unavailable files, reparse-point paths, and
+Beacon system data. Reserve foreground state and use the state-database write gate
+before registration; defer imports while a blocking modal window or restore is active.
+The per-user registry verb is disabled by default, requires no elevation, and may
+only be created or removed through the user's Settings action. Do not automatically
+enable it on startup or modify other Explorer associations. IPC must remain scoped
+to the current Windows user, bounded by payload/file/queue limits, and acknowledge
+accepted requests; closing/restarting must warn before discarding pending imports.
 
 Initial versions may rely on manual scans.
 

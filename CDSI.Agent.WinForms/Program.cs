@@ -54,16 +54,28 @@ static class Program
             profileDirectory = GetProfileDirectory(
                 Environment.GetEnvironmentVariable("CDSI_BEACON_PROFILE_DIRECTORY"));
             dataDirectory = profileDirectory;
+            var importPaths = ShellFileImportRequest.ParseArguments(args);
             // Retain the legacy mutex name so Atlas and Beacon cannot run together.
             using var singleInstance = new SingleInstanceCoordinator("CDSI.Atlas");
             if (!singleInstance.IsPrimaryInstance)
             {
+                if (importPaths.Length > 0)
+                {
+                    ShellFileImportBroker.SendAsync("CDSI.Atlas", importPaths)
+                        .GetAwaiter().GetResult();
+                }
                 singleInstance.SignalPrimaryInstance();
                 return;
             }
 
             ApplicationConfiguration.Initialize();
             runtimeLog = new RuntimeLogService(profileDirectory);
+            // Listen before workspace selection so subsequent Explorer selections can queue.
+            using var shellImportBroker = new ShellFileImportBroker("CDSI.Atlas");
+            if (importPaths.Length > 0)
+            {
+                shellImportBroker.TryEnqueue(importPaths);
+            }
 
             // Complete old-version recovery before taking migration snapshots.
             // No databases are initialized or created by this check.
@@ -261,6 +273,8 @@ static class Program
                 dataDirectory,
                 runtimeLog);
             mainForm.BindWorkspaceDataLocation(selectedWorkspace.WorkspacePath, workspaceDataService);
+            mainForm.BindShellFileImports(shellImportBroker,
+                new SelectedFileImportService(repository, new LocalFileInspector()), profileDirectory);
             mainForm.SetStartupStateRestoreNotification(
                 startupRestoreResult,
                 startupRestoreWarning,

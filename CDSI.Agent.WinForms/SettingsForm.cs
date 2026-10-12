@@ -88,6 +88,7 @@ public sealed partial class SettingsForm : Form
         tabs.TabPages.Add(storagePage);
         tabs.TabPages.Add(CreateOpenWebPage());
         tabs.TabPages.Add(CreateGitPage());
+        tabs.TabPages.Add(CreateExplorerIntegrationPage());
         tabs.SelectedTab = initialPage switch
         {
             SettingsPage.ScanRoots => scanRootsPage,
@@ -501,6 +502,7 @@ public sealed partial class SettingsForm : Form
             await RefreshStorageAsync();
             await RefreshOpenWebAsync();
             await RefreshGitProfilesAsync();
+            RefreshExplorerIntegration();
         }
         catch (Exception exception)
         {

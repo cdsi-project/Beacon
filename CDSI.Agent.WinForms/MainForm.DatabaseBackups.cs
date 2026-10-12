@@ -146,6 +146,10 @@ public sealed partial class MainForm
 
     private async void MainForm_FormClosing(object? sender, FormClosingEventArgs e)
     {
+        if (!CanCloseShellImports(e))
+        {
+            return;
+        }
         _scanCancellation?.Cancel();
         StopLocalVolumeMonitoring();
         _databaseBackupTimer.Stop();

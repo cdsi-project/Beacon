@@ -253,7 +253,8 @@ public sealed partial class SqliteAssetRepository : IAssetRepository
         string deviceId,
         IReadOnlyCollection<DiscoveredFile> files,
         DateTimeOffset discoveredAt,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        bool restoreHiddenAssets = false)
     {
         if (files.Count == 0)
         {
@@ -327,6 +328,21 @@ public sealed partial class SqliteAssetRepository : IAssetRepository
                     volumeBinding,
                     discoveredAt,
                     cancellationToken);
+            }
+
+            // Only an explicit selected-file import restores a globally hidden record.
+            // Normal rescans must preserve the user's persistent removal decision.
+            if (restoreHiddenAssets)
+            {
+                await using var restore = connection.CreateCommand();
+                restore.Transaction = (SqliteTransaction)transaction;
+                restore.CommandText = """
+                    UPDATE assets
+                    SET hidden_from_asset_list = 0, hidden_from_asset_list_at = NULL
+                    WHERE id = $id;
+                    """;
+                restore.Parameters.AddWithValue("$id", assetId.Value.ToString("D"));
+                await restore.ExecuteNonQueryAsync(cancellationToken);
             }
 
             registered.Add(new RegisteredLocalAsset(
