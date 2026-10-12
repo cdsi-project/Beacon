@@ -188,6 +188,11 @@ public interface IAssetRepository
         DateTimeOffset excludedAt,
         CancellationToken cancellationToken = default);
 
+    Task<AssetDirectoryExclusionResult> ExcludeAssetDirectoryAndHideAssetsAsync(
+        string path,
+        DateTimeOffset excludedAt,
+        CancellationToken cancellationToken = default);
+
     Task<IReadOnlyList<string>> ListExcludedAssetDirectoryPathsAsync(
         CancellationToken cancellationToken = default);
 

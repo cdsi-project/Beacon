@@ -10,7 +10,8 @@ public sealed record AssetListFilter
         DateTimeOffset? createdBefore = null,
         string? extension = null,
         Guid? tagId = null,
-        string? filenameContains = null)
+        string? filenameContains = null,
+        string? directoryPath = null)
     {
         if (!Enum.IsDefined(fileType))
         {
@@ -30,6 +31,9 @@ public sealed record AssetListFilter
         Extension = NormalizeExtension(extension);
         TagId = tagId;
         FilenameContains = NormalizeFilenameContains(filenameContains);
+        DirectoryPath = string.IsNullOrWhiteSpace(directoryPath)
+            ? null
+            : Path.TrimEndingDirectorySeparator(Path.GetFullPath(directoryPath));
     }
 
     public AssetFileTypeFilter FileType { get; }
@@ -44,13 +48,16 @@ public sealed record AssetListFilter
 
     public string? FilenameContains { get; }
 
+    public string? DirectoryPath { get; }
+
     public bool IsEmpty =>
         FileType == AssetFileTypeFilter.All &&
         CreatedFrom is null &&
         CreatedBefore is null &&
         Extension is null &&
         TagId is null &&
-        FilenameContains is null;
+        FilenameContains is null &&
+        DirectoryPath is null;
 
     private static string? NormalizeFilenameContains(string? filenameContains)
     {

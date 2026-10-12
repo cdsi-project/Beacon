@@ -416,6 +416,97 @@ public sealed class SqliteAssetRepositoryTests
     }
 
     [Fact]
+    public async Task ExcludeDirectoryAndHideAssets_PreservesProjectsBackupsAndOtherDirectoryLocations()
+    {
+        using var directory = new TestDirectory();
+        var databasePath = Path.Combine(directory.Path, "cdsi.db");
+        var repository = new SqliteAssetRepository(databasePath);
+        await repository.InitializeAsync();
+        var deviceId = await repository.GetOrCreateDeviceIdAsync();
+        var root = Path.Combine(directory.Path, "素材_%");
+        var files = new[]
+        {
+            CreateFile(Path.Combine(root, "one.txt"), "one.txt"),
+            CreateFile(Path.Combine(root, "Nested", "two.txt"), "two.txt"),
+            CreateFile(Path.Combine(root, "shared.txt"), "shared.txt"),
+            CreateFile(Path.Combine(root + "备份", "keep.txt"), "keep.txt")
+        };
+        var now = DateTimeOffset.UtcNow;
+        var registered = await repository.RegisterLocalFilesAsync(deviceId, files, now);
+        var outsidePath = Path.Combine(directory.Path, "Other", "shared.txt");
+        await repository.RegisterLocalLocationAsync(registered[2].AssetId, deviceId, outsidePath,
+            AssetLocationOwnership.External, now);
+        var project = new AssetCollection(Guid.NewGuid(), "保留项目", AssetCollectionType.Mixed, now, now);
+        Assert.True(await repository.CreateAssetCollectionAsync(project));
+        Assert.Equal(2, await repository.AddAssetsToCollectionAsync(project.Id,
+            [registered[0].AssetId, registered[1].AssetId], now));
+        var profile = CreateStorageProfile("测试备份", now);
+        await repository.SaveStorageProfileAsync(profile);
+        await repository.SaveObjectStorageLocationAsync(CreateStorageLocation(registered[0].AssetId,
+            profile.Id, "项目/one.txt", StorageVerificationStatus.Healthy, now));
+
+        var result = await repository.ExcludeAssetDirectoryAndHideAssetsAsync(root, now.AddSeconds(1));
+        Assert.Equal(3, result.ExcludedLocationCount);
+        Assert.Equal(2, result.HiddenAssetCount);
+        Assert.Equal(0, (await repository.ExcludeAssetDirectoryAndHideAssetsAsync(root, now.AddSeconds(2)))
+            .HiddenAssetCount);
+        var visible = await repository.ListAssetsAsync(100);
+        Assert.Equal(2, visible.Count);
+        Assert.Contains(visible, asset => asset.Path == outsidePath && asset.AssetId == registered[2].AssetId);
+        Assert.Contains(visible, asset => asset.OriginalFilename == "keep.txt");
+        var members = await repository.ListAssetCollectionMembersAsync(project.Id);
+        Assert.Equal(2, members.Count);
+        Assert.Equal(project.Id, (await repository.GetAssetCollectionAsync(project.Id))!.Id);
+        Assert.True(members.Single(member => member.Asset.AssetId == registered[0].AssetId)
+            .Asset.HasHealthyObjectStorageBackup);
+
+        await repository.RestoreAssetDirectoryAsync(root);
+        await repository.RegisterLocalFilesAsync(deviceId, files, now.AddSeconds(3));
+        var reopened = new SqliteAssetRepository(databasePath);
+        await reopened.InitializeAsync();
+        var afterRescan = await reopened.ListAssetsAsync(100);
+        Assert.DoesNotContain(afterRescan, asset => asset.AssetId == registered[0].AssetId ||
+            asset.AssetId == registered[1].AssetId);
+        Assert.Equal(2, (await reopened.ListAssetCollectionMembersAsync(project.Id)).Count);
+        Assert.Contains(afterRescan, asset => asset.Path == outsidePath);
+        SqliteConnection.ClearAllPools();
+    }
+
+    [Fact]
+    public async Task ExcludeDirectoryAndHideAssets_RollsBackDirectoryAndRootChangesOnFailure()
+    {
+        using var directory = new TestDirectory();
+        var databasePath = Path.Combine(directory.Path, "cdsi.db");
+        var repository = new SqliteAssetRepository(databasePath);
+        await repository.InitializeAsync();
+        var deviceId = await repository.GetOrCreateDeviceIdAsync();
+        var root = Path.Combine(directory.Path, "Assets");
+        var now = DateTimeOffset.UtcNow;
+        var scanRoot = await repository.GetOrCreateScanRootAsync(root, ScanRootMode.Readonly, now);
+        await repository.RegisterLocalFilesAsync(deviceId,
+            [CreateFile(Path.Combine(root, "one.txt"), "one.txt")], now);
+        await using var connection = new SqliteConnection($"Data Source={databasePath};Pooling=False");
+        await connection.OpenAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            CREATE TRIGGER fail_asset_hide BEFORE UPDATE OF hidden_from_asset_list ON assets
+            WHEN NEW.hidden_from_asset_list = 1
+            BEGIN SELECT RAISE(ABORT, 'test: reject hide'); END;
+            """;
+        await command.ExecuteNonQueryAsync();
+
+        await Assert.ThrowsAsync<SqliteException>(() =>
+            repository.ExcludeAssetDirectoryAndHideAssetsAsync(root, now.AddSeconds(1)));
+        Assert.Empty(await repository.ListExcludedAssetDirectoryPathsAsync());
+        Assert.Single(await repository.ListAssetsAsync(100));
+        Assert.Single(await repository.ListAssetDirectoriesAsync());
+        var preservedRoot = (await repository.ListScanRootsAsync()).Single(item => item.Id == scanRoot.Id);
+        Assert.True(preservedRoot.Enabled);
+        Assert.Null(preservedRoot.RemovedAt);
+        SqliteConnection.ClearAllPools();
+    }
+
+    [Fact]
     public async Task ListAssetsAsync_AppliesFileTypeAndCreationTimeFiltersInSqlite()
     {
         using var directory = new TestDirectory();
@@ -618,6 +709,48 @@ public sealed class SqliteAssetRepositoryTests
         Assert.Equal(0, second.MissingAssetCount);
         Assert.Equal(30, second.AvailableSizeBytes);
 
+        SqliteConnection.ClearAllPools();
+    }
+
+    [Fact]
+    public async Task DirectoryFilter_IncludesDescendantsAndRespectsBoundariesPaginationAndVisibility()
+    {
+        using var directory = new TestDirectory();
+        var repository = new SqliteAssetRepository(Path.Combine(directory.Path, "cdsi.db"));
+        await repository.InitializeAsync();
+        var deviceId = await repository.GetOrCreateDeviceIdAsync();
+        var root = Path.Combine(directory.Path, "素材_%");
+        var files = new[]
+        {
+            CreateFile(Path.Combine(root, "root.txt"), "root.txt"),
+            CreateFile(Path.Combine(root, "A", "deep.txt"), "deep.txt"),
+            CreateFile(Path.Combine(root, "B", "nested", "other.md"), "other.md"),
+            CreateFile(Path.Combine(root + "备份", "sibling.txt"), "sibling.txt"),
+            CreateFile(Path.Combine(root, "hidden.txt"), "hidden.txt"),
+            CreateFile(Path.Combine(root, "Excluded", "excluded.txt"), "excluded.txt")
+        };
+        var registered = await repository.RegisterLocalFilesAsync(deviceId, files, DateTimeOffset.UtcNow);
+        await repository.HideAssetsFromListAsync([registered[4].AssetId], DateTimeOffset.UtcNow);
+        await repository.ExcludeAssetDirectoryAsync(Path.Combine(root, "Excluded"), DateTimeOffset.UtcNow);
+
+        var filter = new AssetListFilter(directoryPath: root + Path.DirectorySeparatorChar);
+        var assets = await repository.ListAssetsAsync(filter, 100);
+        Assert.Equal(3, await repository.GetAssetListCountAsync(filter));
+        Assert.Equal(["deep.txt", "other.md", "root.txt"],
+            assets.Select(asset => asset.OriginalFilename).Order());
+        Assert.Equal(assets[0].AssetId, Assert.Single(await repository.ListAssetsAsync(filter, 1)).AssetId);
+        Assert.Equal(assets[1].AssetId, Assert.Single(await repository.ListAssetsAsync(filter, 1, 1)).AssetId);
+        Assert.Equal(1, await repository.GetAssetListCountAsync(
+            new AssetListFilter(directoryPath: root, extension: ".md")));
+        Assert.Equal(1, await repository.GetAssetListCountAsync(
+            new AssetListFilter(directoryPath: root, filenameContains: "deep")));
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.Equal(3, await repository.GetAssetListCountAsync(
+                new AssetListFilter(directoryPath: root.ToUpperInvariant())));
+        }
+        Assert.Empty(await repository.ListAssetsAsync(new AssetListFilter(
+            directoryPath: Path.Combine(root, "DoesNotExist")), 100));
         SqliteConnection.ClearAllPools();
     }
 

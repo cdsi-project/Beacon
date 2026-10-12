@@ -11,4 +11,5 @@ public sealed record AssetDirectorySummary(
 public sealed record AssetDirectoryExclusionResult(
     string Path,
     int ExcludedLocationCount,
-    int StoppedScanRootCount);
+    int StoppedScanRootCount,
+    int HiddenAssetCount = 0);

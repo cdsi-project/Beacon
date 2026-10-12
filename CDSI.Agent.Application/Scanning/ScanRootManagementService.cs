@@ -226,6 +226,17 @@ public sealed class ScanRootManagementService
             cancellationToken);
     }
 
+    public Task<AssetDirectoryExclusionResult> ExcludeAssetDirectoryAndHideAssetsAsync(
+        string path,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        return _repository.ExcludeAssetDirectoryAndHideAssetsAsync(
+            path,
+            DateTimeOffset.UtcNow,
+            cancellationToken);
+    }
+
     private async Task EnsureExternalRootAsync(
         Guid scanRootId,
         CancellationToken cancellationToken)

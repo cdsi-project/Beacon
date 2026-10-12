@@ -6,10 +6,27 @@ namespace CDSI.Agent.Infrastructure.Persistence;
 
 public sealed partial class SqliteAssetRepository
 {
-    public async Task<AssetDirectoryExclusionResult> ExcludeAssetDirectoryAsync(
+    public Task<AssetDirectoryExclusionResult> ExcludeAssetDirectoryAsync(
         string path,
         DateTimeOffset excludedAt,
         CancellationToken cancellationToken = default)
+    {
+        return ExcludeAssetDirectoryCoreAsync(path, excludedAt, hideAssets: false, cancellationToken);
+    }
+
+    public Task<AssetDirectoryExclusionResult> ExcludeAssetDirectoryAndHideAssetsAsync(
+        string path,
+        DateTimeOffset excludedAt,
+        CancellationToken cancellationToken = default)
+    {
+        return ExcludeAssetDirectoryCoreAsync(path, excludedAt, hideAssets: true, cancellationToken);
+    }
+
+    private async Task<AssetDirectoryExclusionResult> ExcludeAssetDirectoryCoreAsync(
+        string path,
+        DateTimeOffset excludedAt,
+        bool hideAssets,
+        CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
         var normalizedPath = NormalizePath(path);
@@ -91,11 +108,44 @@ public sealed partial class SqliteAssetRepository
             stoppedScanRootCount = await rootCommand.ExecuteNonQueryAsync(cancellationToken);
         }
 
+        var hiddenAssetCount = 0;
+        if (hideAssets)
+        {
+            await using var assetCommand = connection.CreateCommand();
+            assetCommand.Transaction = (SqliteTransaction)transaction;
+            assetCommand.CommandText =
+                """
+                UPDATE assets AS a
+                SET hidden_from_asset_list = 1,
+                    hidden_from_asset_list_at = $excluded_at
+                WHERE a.hidden_from_asset_list = 0
+                  AND EXISTS (
+                      SELECT 1 FROM asset_locations scoped
+                      WHERE scoped.asset_id = a.id
+                        AND scoped.location_type = 'Local'
+                        AND (scoped.path_key = $path_key
+                          OR substr(scoped.path_key, 1, length($path_prefix)) = $path_prefix)
+                  )
+                  AND NOT EXISTS (
+                      SELECT 1 FROM asset_locations other
+                      WHERE other.asset_id = a.id
+                        AND other.location_type = 'Local'
+                        AND other.path_key != $path_key
+                        AND substr(other.path_key, 1, length($path_prefix)) != $path_prefix
+                  );
+                """;
+            assetCommand.Parameters.AddWithValue("$path_key", pathKey);
+            assetCommand.Parameters.AddWithValue("$path_prefix", pathPrefix);
+            assetCommand.Parameters.AddWithValue("$excluded_at", excludedAt.ToString("O"));
+            hiddenAssetCount = await assetCommand.ExecuteNonQueryAsync(cancellationToken);
+        }
+
         await transaction.CommitAsync(cancellationToken);
         return new AssetDirectoryExclusionResult(
             normalizedPath,
             excludedLocationCount,
-            stoppedScanRootCount);
+            stoppedScanRootCount,
+            hiddenAssetCount);
     }
 
     public async Task<IReadOnlyList<string>> ListExcludedAssetDirectoryPathsAsync(

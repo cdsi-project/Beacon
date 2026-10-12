@@ -11,6 +11,18 @@ public sealed class AssetListFilterTests
     }
 
     [Fact]
+    public void Constructor_NormalizesDirectoryScopeAndRecognizesTheCondition()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "Beacon目录");
+        var filter = new AssetListFilter(directoryPath: directory + Path.DirectorySeparatorChar);
+        Assert.Equal(Path.GetFullPath(directory), filter.DirectoryPath);
+        Assert.False(filter.IsEmpty);
+        Assert.True(new AssetListFilter(directoryPath: " ").IsEmpty);
+        Assert.Equal(Path.GetPathRoot(directory),
+            new AssetListFilter(directoryPath: Path.GetPathRoot(directory)).DirectoryPath);
+    }
+
+    [Fact]
     public void Constructor_RejectsAnInvalidCreationTimeRange()
     {
         var boundary = DateTimeOffset.Parse("2026-08-20T00:00:00Z");

@@ -27,6 +27,7 @@ public sealed partial class MainForm
     private readonly Button _applyAssetFilterButton = new();
     private readonly Button _resetAssetFilterButton = new();
     private readonly Label _assetFilterResultLabel = new();
+    private readonly LinkLabel _assetDirectoryFilterLink = new();
     private AssetListFilter _assetListFilter = AssetListFilter.Empty;
     private int _assetExtensionRefreshVersion;
 
@@ -99,6 +100,24 @@ public sealed partial class MainForm
         _assetFilterResultLabel.ForeColor = Color.FromArgb(88, 98, 106);
         _assetFilterResultLabel.AccessibleName = "资产过滤结果";
 
+        _assetDirectoryFilterLink.AutoSize = true;
+        _assetDirectoryFilterLink.MaximumSize = new Size(320, 0);
+        _assetDirectoryFilterLink.Margin = new Padding(10, 8, 0, 0);
+        _assetDirectoryFilterLink.AccessibleName = "当前目录筛选，点击取消";
+        _assetDirectoryFilterLink.Visible = false;
+        _assetDirectoryFilterLink.LinkClicked += async (_, _) =>
+        {
+            if (_isBusy || _refreshingAssetPage)
+            {
+                return;
+            }
+            var filter = _assetListFilter;
+            _assetListFilter = new AssetListFilter(filter.FileType, filter.CreatedFrom, filter.CreatedBefore,
+                filter.Extension, filter.TagId, filter.FilenameContains);
+            _assetPageIndex = 0;
+            await RefreshAssetPageAsync();
+        };
+
         return CreateAssetFilterPanel(
             _assetFilenameFilterTextBox,
             _assetFileTypeFilterComboBox,
@@ -108,7 +127,8 @@ public sealed partial class MainForm
             _assetCreatedToDatePicker,
             _applyAssetFilterButton,
             _resetAssetFilterButton,
-            _assetFilterResultLabel);
+            _assetFilterResultLabel,
+            _assetDirectoryFilterLink);
     }
 
     internal static Control CreateAssetFilterPanel(
@@ -120,11 +140,15 @@ public sealed partial class MainForm
         DateTimePicker createdToDatePicker,
         Button applyButton,
         Button resetButton,
-        Label resultLabel)
+        Label resultLabel,
+        Control? directoryFilterControl = null)
     {
         var panel = new FlowLayoutPanel
         {
-            Dock = DockStyle.Fill,
+            Dock = DockStyle.Top,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            MinimumSize = new Size(0, 82),
             FlowDirection = FlowDirection.LeftToRight,
             WrapContents = true,
             Margin = Padding.Empty,
@@ -146,6 +170,10 @@ public sealed partial class MainForm
         panel.Controls.Add(applyButton);
         panel.Controls.Add(resetButton);
         panel.Controls.Add(resultLabel);
+        if (directoryFilterControl is not null)
+        {
+            panel.Controls.Add(directoryFilterControl);
+        }
         return panel;
     }
 
@@ -157,7 +185,8 @@ public sealed partial class MainForm
         DateTime createdTo,
         string? extension = null,
         Guid? tagId = null,
-        string? filenameContains = null)
+        string? filenameContains = null,
+        string? directoryPath = null)
     {
         if (createdFromEnabled &&
             createdToEnabled &&
@@ -178,7 +207,8 @@ public sealed partial class MainForm
             createdBeforeBoundary,
             extension,
             tagId,
-            filenameContains);
+            filenameContains,
+            directoryPath);
     }
 
     private static DateTimeOffset StartOfLocalDay(DateTime value)
@@ -249,7 +279,8 @@ public sealed partial class MainForm
                     ? _assetExtensionFilterComboBox.SelectedItem as string
                     : null,
                 (_assetTagFilterComboBox.SelectedItem as AssetTagFilterChoice)?.TagId,
-                _assetFilenameFilterTextBox.Text);
+                _assetFilenameFilterTextBox.Text,
+                _assetListFilter.DirectoryPath);
         }
         catch (ArgumentException exception)
         {
@@ -283,6 +314,13 @@ public sealed partial class MainForm
 
     private void UpdateAssetFilterResult(long filteredCount, long totalCount)
     {
+        _assetDirectoryFilterLink.Visible = _assetListFilter.DirectoryPath is not null;
+        if (_assetListFilter.DirectoryPath is { } path)
+        {
+            var name = Path.GetFileName(Path.TrimEndingDirectorySeparator(path));
+            _assetDirectoryFilterLink.Text = $"目录：{(name.Length == 0 ? path : name)}（取消）";
+            _assetDirectoryFilterLink.AccessibleDescription = path + "，包含所有子目录";
+        }
         _assetFilterResultLabel.Text = _assetListFilter.IsEmpty
             ? $"全部 {totalCount:N0}"
             : $"筛选结果 {filteredCount:N0} / {totalCount:N0}";
@@ -299,6 +337,8 @@ public sealed partial class MainForm
         _assetCreatedToDatePicker.Enabled = enabled;
         _applyAssetFilterButton.Enabled = enabled;
         _resetAssetFilterButton.Enabled = enabled;
+        _assetDirectoryFilterLink.Enabled = enabled;
+        UpdateAssetDirectoryActionState();
     }
 
     internal static void RefreshAssetExtensionChoices(

@@ -201,6 +201,41 @@ public sealed class ScanConfigurationTests
     }
 
     [Fact]
+    public async Task ExcludeDirectoryAndHideAssets_RemainsHiddenAfterReaddingRootAndRescanning()
+    {
+        using var directory = new TestDirectory();
+        var databasePath = Path.Combine(directory.Path, "State", "cdsi.db");
+        var repository = new SqliteAssetRepository(databasePath);
+        await repository.InitializeAsync();
+        var root = Directory.CreateDirectory(Path.Combine(directory.Path, "Assets"));
+        var child = Directory.CreateDirectory(Path.Combine(root.FullName, "Nested"));
+        var sibling = Directory.CreateDirectory(root.FullName + "Backup");
+        var original = Path.Combine(child.FullName, "original.txt");
+        var keep = Path.Combine(sibling.FullName, "keep.txt");
+        await File.WriteAllTextAsync(original, "original content");
+        await File.WriteAllTextAsync(keep, "keep content");
+        var service = new ScanApplicationService(new FileSystemScanner(), repository);
+        var roots = new ScanRootManagementService(repository);
+        var registration = await roots.AddExternalAsync(root.FullName);
+        await service.ScanRootsAsync([registration.Root.Id]);
+        await service.ScanDirectoryAsync(sibling.FullName);
+
+        var removed = await roots.ExcludeAssetDirectoryAndHideAssetsAsync(root.FullName);
+        Assert.Equal(1, removed.HiddenAssetCount);
+        Assert.Equal(1, removed.StoppedScanRootCount);
+        Assert.Equal("keep.txt", Assert.Single(await service.ListAssetsAsync()).OriginalFilename);
+        Assert.Equal("original content", await File.ReadAllTextAsync(original));
+        Assert.Equal("keep content", await File.ReadAllTextAsync(keep));
+        Assert.DoesNotContain(await roots.ListExternalAsync(), item => item.Id == registration.Root.Id);
+
+        var reopenedRoot = await roots.AddExternalAsync(root.FullName);
+        await service.ScanRootsAsync([reopenedRoot.Root.Id]);
+        Assert.Equal("keep.txt", Assert.Single(await service.ListAssetsAsync()).OriginalFilename);
+        Assert.Equal("original content", await File.ReadAllTextAsync(original));
+        SqliteConnection.ClearAllPools();
+    }
+
+    [Fact]
     public async Task ScanRootsAsync_IndexesOnlyTheConfiguredFileType()
     {
         using var directory = new TestDirectory();

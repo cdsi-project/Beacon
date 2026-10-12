@@ -1563,6 +1563,11 @@ public sealed partial class SqliteAssetRepository : IAssetRepository
                 "instr(lower(a.original_filename), $filename_contains) > 0");
         }
 
+        if (filter.DirectoryPath is not null)
+        {
+            conditions.Add("substr(l.path_key, 1, length($directory_prefix)) = $directory_prefix");
+        }
+
         if (filter.TagId is not null)
         {
             conditions.Add(
@@ -1636,6 +1641,12 @@ public sealed partial class SqliteAssetRepository : IAssetRepository
         SqliteCommand command,
         AssetListFilter filter)
     {
+        if (filter.DirectoryPath is not null)
+        {
+            command.Parameters.AddWithValue("$directory_prefix",
+                CreatePathKey(AppendDirectorySeparator(filter.DirectoryPath)));
+        }
+
         if (filter.CreatedFrom is not null)
         {
             command.Parameters.AddWithValue(
